@@ -13,8 +13,8 @@ This project asks whether short child vocalisation segments from the ACQDIV corp
 ## Problem Setting
 
 We formulate the task as a **4-class supervised classification problem**. Each example consists of:
-- an audio segment \(x_i^{audio}\) containing one child vocalisation
-- a metadata vector \(x_i^{meta}\) containing child age in months and gender
+- an audio segment $$\(x_i^{audio}\)$$ containing one child vocalisation
+- a metadata vector $$\(x_i^{meta}\)$$ containing child age in months and gender
 
 The model must predict one of these labels:
 
@@ -73,4 +73,4 @@ Macro F1 is the main metric because the classes may not be perfectly balanced. W
 
 ## Expected Contribution
 
-This project will provide a useful benchmark for classifying child vocalisation contexts in an under-resourced language setting. It will show whether simple acoustic features, small neural models, and basic metadata such as age and gender can help distinguish between broad context groups in Shipibo-Conibo child vocalisations.
+This project will provide a useful benchmark for classifying child vocalisation contexts in an under-resourced language setting. It will show whether simple acoustic features, small neural models and basic metadata such as age and gender can help distinguish between broad context groups in Shipibo-Conibo child vocalisations.
