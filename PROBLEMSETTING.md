@@ -23,7 +23,7 @@ $$
 \mathcal{D} = \{(x_i^{audio}, x_i^{meta}, y_i)\}_{i=1}^{N}
 $$
 
-where $\(x_i^{audio}\) is a vocalisation segment, $\(x_i^{meta}\) is the metadata vector, and
+where $$\(x_i^{audio}\)$$ is a vocalisation segment, $$\(x_i^{meta}\)$$ is the metadata vector, and
 
 $$
 y_i \in \{\mathrm{PLTOY}, \mathrm{MOVE}, \mathrm{INTER}, \mathrm{EXTEV}\}.
