@@ -2,14 +2,6 @@
 
 This project asks whether short child vocalisation segments from the ACQDIV corpus can be classified into broad interactional context labels using acoustic features alone. The data comes from the Shipibo-Conibo subset (`shp`) and contains about 1,000 annotated audio segments with timestamps, context labels and metadata such as child age, gender and language.
 
-## Research Questions
-
-1. **Can short child vocalisation segments be classified into a small set of context labels using acoustic features alone?**
-2. **Do neural models, especially a small Transformer, perform better than simple classical baselines on this task?**
-3. **Does adding metadata such as child age and gender improve classification performance?**
-4. **Which labels are most often confused with each other?**
-5. **Which parts of the vocalisation seem most useful for prediction and does the Transformer help capture them through self-attention?**
-
 ## Problem Setting
 
 We formulate the task as a **4-class supervised classification problem**. Each example consists of:
@@ -31,7 +23,7 @@ $$
 \mathcal{D} = \{(x_i^{audio}, x_i^{meta}, y_i)\}_{i=1}^{N}
 $$
 
-where \(x_i^{audio}\) is a vocalisation segment, \(x_i^{meta}\) is the metadata vector, and
+where $\(x_i^{audio}\) is a vocalisation segment, $\(x_i^{meta}\) is the metadata vector, and
 
 $$
 y_i \in \{\mathrm{PLTOY}, \mathrm{MOVE}, \mathrm{INTER}, \mathrm{EXTEV}\}.
