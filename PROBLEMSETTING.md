@@ -4,7 +4,7 @@ This project asks whether short child vocalisation segments from the ACQDIV corp
 
 ## Problem setting
 
-This project studies whether and how a scontaining a child vocalisation can be classified into one of four interactional context classes in the Shipibo-Conibo subset of ACQDIV.
+This project studies whether and how a child vocalisation can be classified into one of four interactional context classes in the Shipibo-Conibo subset of ACQDIV.
 
 Each example is
 $$\[
