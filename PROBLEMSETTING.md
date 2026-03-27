@@ -1,67 +1,50 @@
 # Multi-Class Classification of Child Vocalisation Contexts in Shipibo-Conibo
 
-This project asks whether short child vocalisation segments from the ACQDIV corpus can be classified into broad interactional context labels using acoustic features alone. The data comes from the Shipibo-Conibo subset (`shp`) and contains about 1,000 annotated audio segments with timestamps, context labels and metadata such as child age, gender and language.
+This project asks whether short child vocalisation segments from the ACQDIV corpus can be classified into broad interactional context labels using acoustic features alone. The data comes from the Shipibo-Conibo subset (`shp`) and contains annotated audio segments with timestamps, context labels and metadata such as child age, gender and language.
 
-## Problem Setting
+## Problem setting
 
-We formulate the task as a **4-class supervised classification problem**. Each example consists of:
-- an audio segment $$\(x_i^{audio}\)$$ containing one child vocalisation
-- a metadata vector $$\(x_i^{meta}\)$$ containing child age in months and gender
+This project studies whether and how a scontaining a child vocalisation can be classified into one of four interactional context classes in the Shipibo-Conibo subset of ACQDIV.
 
-The model must predict one of these labels:
-
+Each example is
+$$\[
+(x_i^{audio}, x_i^{meta}, y_i)\]$$
+where $$\(x_i^{audio}\)$$ is the audio clip, $$\(x_i^{meta}\)$$ is a small metadata vector containing age and gender, and
+$$\[
+y_i \in \{\mathrm{PLTOY}, \mathrm{MOVE}, \mathrm{INTER}, \mathrm{EXTEV}\}\]$$
+The four labels are defined as:
 - **PLTOY**
-- **MOVE** = `MOVE2`, `MOVE3`, `MOVE5`
-- **INTER** = `INTER1`, `INTER2`, `INTER4`, `INTER5`, `INTER6`, `INTER7`
-- **EXTEV** = `EXTEV1`, `EXTEV2`, `EXTEV3`, `EXTEV6`
-
-We exclude labels such as `REST`, `FOOD2`, `FOOD5`, `TOYMO`, and `SLE` because they are likely too small or less balanced. We also keep **language fixed** in this study, since all selected samples come from the Shipibo-Conibo subset (`shp`).
-
-Formally, let
-
-$$
-\mathcal{D} = \{(x_i^{audio}, x_i^{meta}, y_i)\}_{i=1}^{N}
-$$
-
-where $$\(x_i^{audio}\)$$ is a vocalisation segment, $$\(x_i^{meta}\)$$ is the metadata vector, and
-
-$$
-y_i \in \{\mathrm{PLTOY}, \mathrm{MOVE}, \mathrm{INTER}, \mathrm{EXTEV}\}.
-$$
+- **MOVE** = {MOVE2, MOVE3, MOVE5}
+- **INTER** = {INTER1, INTER2, INTER4, INTER5, INTER6, INTER7}
+- **EXTEV** = {EXTEV1, EXTEV2, EXTEV3, EXTEV6}
 
 The goal is to learn a classifier
-
-$$
-f_{\theta} : (x_i^{audio}, x_i^{meta}) \rightarrow y_i
-$$
+$$\[
+f_\theta(x_i^{audio}, x_i^{meta}) = y_i\]$$
 
 that maps the audio segment and metadata to one of these four labels.
 
-## Approach
 
-We first extract each vocalisation segment from the recordings using its start and end timestamps. The clips are then resampled and padded or truncated to a fixed length.
+## Models
 
-We use two input representations:
+As a simple baseline, we use **multinomial logistic regression** on clip-level MFCC summary features, such as the mean and standard deviation of each MFCC over time.
 
-- **MFCC features** for simple baseline models
-- **Mel-spectrograms** for neural models
-- **Metadata features**: child age in months and gender
+Our main model is a **small Transformer** over time frames. The audio is represented as a mel-spectrogram or MFCC frame sequence, encoded by the Transformer, and then pooled with **metadata-query attentive pooling**. In this step, the metadata is turned into a query vector that decides which time frames are most important before classification.
 
-As baselines, we use **logistic regression** and possibly an **SVM** on MFCC features, with and without metadata. This lets us test whether metadata adds useful information beyond acoustics alone.
+This gives one simple baseline and one stronger model with a non-trivial metadata fusion method.
 
-For the neural models, we compare a small **CNN** and a small **Transformer** on mel-spectrograms. To include metadata, we can concatenate a small metadata vector to the learned audio representation before the final classification layer. The CNN learns local patterns in the spectrogram. The Transformer treats the spectrogram as a sequence over time and uses self-attention to focus on the most relevant parts of the vocalisation.
+## Evaluation protocol
 
-## Evaluation
+We split the data by **recording/session**, not by random clips, so that similar segments do not appear in both training and test sets. The same split is used for all models.
 
-To avoid data leakage, we split the data by **recording or session** rather than by random segment. This prevents very similar clips from appearing in both training and test sets.
+We use **macro-F1** as the single evaluation metric, because the classes are likely imbalanced.
 
-We evaluate performance using:
+We compare:
+1. Logistic regression baseline
+2. Audio-only Transformer
+3. Transformer with metadata-query attentive pooling
 
-- **Macro F1-score**
-- **Accuracy**
-- **Confusion matrix**
-
-Macro F1 is the main metric because the classes may not be perfectly balanced. We will also compare results **with and without metadata** to measure whether age and gender improve prediction.
+This shows whether the Transformer improves over a simple baseline and whether metadata helps beyond acoustics alone.
 
 ## Expected Contribution
 
