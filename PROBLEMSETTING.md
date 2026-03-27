@@ -1,51 +1,85 @@
 # Multi-Class Classification of Child Vocalisation Contexts in Shipibo-Conibo
 
-This project asks whether short child vocalisation segments from the ACQDIV corpus can be classified into broad interactional context labels using acoustic features alone. The data comes from the Shipibo-Conibo subset (`shp`) and contains annotated audio segments with timestamps, context labels and metadata such as child age, gender and language.
+This project investigates whether short child-vocalisation segments from the Shipibo-Conibo subset of the ACQDIV corpus can be classified into broad interactional context categories. Each segment is paired with an annotated context label and limited metadata. The main goal is to compare a simple baseline with a small neural model and to test whether metadata-aware pooling improves classification beyond acoustics alone.
 
 ## Problem setting
 
-This project studies whether and how a child vocalisation can be classified into one of four interactional context classes in the Shipibo-Conibo subset of ACQDIV.
+We formulate the task as a 4-class supervised classification problem. Each example is
 
-Each example is
 $$\[
-(x_i^{audio}, x_i^{meta}, y_i)\]$$
-where $$\(x_i^{audio}\)$$ is the audio clip, $$\(x_i^{meta}\)$$ is a small metadata vector containing age and gender, and
+(x_i^{audio}, x_i^{meta}, y_i)
+\]$$
+
+where $$\(x_i^{audio}\)$$ is an acoustic representation of the clip, $$\(x_i^{meta}\)$$ is a small metadata vector, and $$\(y_i\)$$ is the target context label.
+
+The label space is
+
 $$\[
-y_i \in \{\mathrm{PLTOY}, \mathrm{MOVE}, \mathrm{INTER}, \mathrm{EXTEV}\}\]$$
-The four labels are defined as:
+y_i \in \{\mathrm{PLTOY}, \mathrm{MOVE}, \mathrm{INTER}, \mathrm{EXTEV}\}
+\]$$
+
+The four labels are defined as follows:
+
 - **PLTOY**
 - **MOVE** = {MOVE2, MOVE3, MOVE5}
 - **INTER** = {INTER1, INTER2, INTER4, INTER5, INTER6, INTER7}
 - **EXTEV** = {EXTEV1, EXTEV2, EXTEV3, EXTEV6}
 
-The goal is to learn a classifier
+The objective is to learn a classifier
+
 $$\[
-f_\theta(x_i^{audio}, x_i^{meta}) = y_i\]$$
+f_\theta(x_i^{audio}, x_i^{meta}) = y_i
+\]$$
 
-that maps the audio segment and metadata to one of these four labels.
-
+To reduce leakage and protect participant privacy, direct identity features such as child ID are not used as model inputs. Metadata is restricted to safer variables such as age and gender, and these are evaluated carefully because they may still correlate with participant identity.
 
 ## Models
 
-As a simple baseline, we use **multinomial logistic regression** on clip-level MFCC summary features, such as the mean and standard deviation of each MFCC over time.
+We compare three models.
 
-Our main model is a **small Transformer** over time frames. The audio is represented as a mel-spectrogram or MFCC frame sequence, encoded by the Transformer, and then pooled with **metadata-query attentive pooling**. In this step, the metadata is turned into a query vector that decides which time frames are most important before classification.
+1. **Simple baseline: multinomial logistic regression**  
+   This model uses clip-level MFCC summary features, such as the mean and standard deviation of each MFCC over time.
 
-This gives one simple baseline and one stronger model with a non-trivial metadata fusion method.
+2. **Neural baseline: audio-only Transformer**  
+   A small Transformer encoder is applied to a sequence of MFCC or log-mel frames. The resulting frame representations are pooled with standard mean pooling before classification.
+
+3. **Main model: Transformer with metadata-query attentive pooling**  
+   The same Transformer encoder is used, but the pooled representation is computed with metadata-query attentive pooling. In this model, the metadata is mapped to a query vector that attends over the frame-level audio representations, allowing the model to weight parts of the clip differently before classification.
+
+This setup keeps the comparison focused: one simple baseline, one strong baseline without metadata conditioning, and one metadata-aware model.
 
 ## Evaluation protocol
 
-We split the data by **recording/session**, not by random clips, so that similar segments do not appear in both training and test sets. The same split is used for all models.
+All models are evaluated with the same protocol.
 
-We use **macro-F1** as the single evaluation metric, because the classes are likely imbalanced.
+To reduce overly optimistic results, the preferred split is **participant-disjoint**, so that the same child does not appear in both training and test data. If a fully participant-disjoint split is not feasible because of limited data, we use a grouped split by recording or session and state clearly that this evaluates only within-participant generalization.
 
-We compare:
-1. Logistic regression baseline
-2. Audio-only Transformer
-3. Transformer with metadata-query attentive pooling
+The single evaluation metric is:
 
-This shows whether the Transformer improves over a simple baseline and whether metadata helps beyond acoustics alone.
+- **Macro-F1**
 
-## Expected Contribution
+Macro-F1 is used because the class distribution is expected to be imbalanced.
 
-This project will provide a useful benchmark for classifying child vocalisation contexts in an under-resourced language setting. It will show whether simple acoustic features, small neural models and basic metadata such as age and gender can help distinguish between broad context groups in Shipibo-Conibo child vocalisations.
+The main comparison is between:
+1. logistic regression,
+2. the audio-only Transformer,
+3. the Transformer with metadata-query attentive pooling.
+
+## Hyperparameter tuning
+
+Hyperparameter tuning is kept limited to make the project feasible.
+
+For logistic regression, we tune:
+- regularization strength.
+
+For the Transformer models, we tune:
+- number of layers,
+- hidden dimension,
+- dropout,
+- learning rate.
+
+All model selection is done on the validation set using macro-F1.
+
+## Expected contribution
+
+This project will provide a small, well-controlled benchmark for classifying child-vocalisation contexts in an under-resourced language setting. It will show whether a small Transformer improves over a simple feature-based baseline, and whether metadata-query attentive pooling helps beyond an audio-only Transformer while avoiding direct use of participant identity.
