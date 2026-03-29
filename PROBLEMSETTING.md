@@ -41,7 +41,7 @@ We compare three models.
    This model uses clip-level MFCC summary features, such as the mean and standard deviation of each MFCC over time.
 
 2. **Neural baseline: audio-only Transformer**  
-   A small Transformer encoder is applied to a sequence of MFCC or log-mel frames. The resulting frame representations are pooled with standard mean pooling before classification.
+   A small Transformer encoder is applied to a sequence of spectrogram frames. The resulting frame representations are pooled with standard mean pooling before classification.
 
 3. **Main model: Transformer with metadata-query attentive pooling**  
    The same Transformer encoder is used, but the pooled representation is computed with metadata-query attentive pooling. In this model, the metadata is mapped to a query vector that attends over the frame-level audio representations, allowing the model to weight parts of the clip differently before classification.
