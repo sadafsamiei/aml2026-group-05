@@ -50,20 +50,61 @@ This setup keeps the comparison focused: one simple baseline, one strong baselin
 
 ## Evaluation protocol
 
-All models are evaluated with the same protocol.
+All models are evaluated using the same protocol, applied consistently across all three model types.
 
-To reduce overly optimistic results, the preferred split is **participant-disjoint**, so that the same child does not appear in both training and test data. If a fully participant-disjoint split is not feasible because of limited data, we use a grouped split by recording or session and state clearly that this evaluates only within-participant generalization.
+### Split strategy
 
-The single evaluation metric is:
+The preferred evaluation strategy is **participant-disjoint**, meaning no child
+appears in both training and test data. The exact protocol depends on how many
+unique participants are available after the full dataset is assembled:
 
-- **Macro-F1**
+- **Five or more participants:** a fixed holdout split is used, with participants
+  assigned to train, validation, and test sets in approximately a 70 / 15 / 15
+  ratio. Model selection is performed on the validation set. Final performance
+  is reported on the held-out test set once, after all hyperparameter choices
+  are finalised.
 
-Macro-F1 is used because the class distribution is expected to be imbalanced.
+- **Three or four participants:** leave-one-participant-out (LOPO) cross-validation
+  is used. In each fold, one participant is held out as the test set, one serves
+  as the validation set for early stopping and model selection, and the remaining
+  participants form the training set. Performance is reported as mean macro-F1
+  across folds, together with the standard deviation.
 
-The main comparison is between:
-1. logistic regression,
-2. the audio-only Transformer,
-3. the Transformer with metadata-query attentive pooling.
+- **Fewer than three participants (current data state):** a stratified k-fold
+  cross-validation (k = 5) is used, stratified by the 4-class label. In this
+  fallback, the same participant may appear in both training and test folds.
+  This evaluates only within-participant generalisation and is explicitly
+  acknowledged as a limitation. Results obtained under this protocol cannot
+  be interpreted as evidence of generalisation to unseen speakers.
+
+The applicable protocol will be stated explicitly in the results section once
+the final dataset size is known.
+
+### Why participant structure influences protocol choice
+
+The current dataset contains vocalisations from two children (JEX, n = 43;
+PED, n = 79). Several context classes are strongly confounded with participant
+identity in the current data: MOVE and EXTEV examples come exclusively from PED,
+while JEX contributes no MOVE or EXTEV examples at all. A fixed holdout under
+these conditions risks either (a) placing an entire class in the test set with
+no training signal, or (b) producing inflated estimates because the model can
+exploit participant-specific acoustic cues rather than context-specific ones.
+Cross-validation distributes this risk across folds and produces a more honest
+estimate of out-of-sample performance. The choice of protocol is therefore
+not arbitrary — it is a direct consequence of dataset size and participant
+coverage, and is documented as such.
+
+### Evaluation metric
+
+The single reported metric is **macro-F1** (the unweighted mean of per-class
+F1 scores). Macro-F1 is used rather than accuracy because the class distribution
+is imbalanced, and a majority-class classifier would achieve misleadingly high
+accuracy. Macro-F1 weights each class equally regardless of its frequency,
+making it sensitive to performance on minority classes.
+
+All three models — logistic regression, audio-only Transformer, and Transformer
+with metadata-query attentive pooling — are evaluated under the identical
+protocol and metric. No model-specific evaluation adjustments are made.
 
 ## Hyperparameter tuning
 
