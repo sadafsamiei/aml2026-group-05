@@ -1,6 +1,6 @@
-# Multi-Class Classification of Child Vocalisation Contexts in Shipibo-Conibo
+# Multi-Class Classification of Child Vocalisation Contexts in ACQDIV
 
-This project investigates whether short child-vocalisation segments from the Shipibo-Conibo subset of the ACQDIV corpus can be classified into broad interactional context categories. Each segment is paired with an annotated context label and limited metadata. The main goal is to compare a simple baseline with a small neural model and to test whether metadata-aware pooling improves classification beyond acoustics alone.
+This project investigates whether short child-vocalisation segments from an ACQDIV-based dataset can be classified into broad interactional context categories. The initial experiments focus on the Shipibo-Conibo subset, while leaving open the possibility of extending the analysis to additional cultural or linguistic subsets if this is necessary to improve participant coverage. Each segment is associated with an annotated context label and limited metadata. The main goal is to compare a simple baseline with a small neural model and to examine whether metadata-aware pooling improves classification beyond acoustic information alone.
 
 ## Problem setting
 
