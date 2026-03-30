@@ -91,14 +91,14 @@ no training signal, or (b) producing inflated estimates because the model can
 exploit participant-specific acoustic cues rather than context-specific ones.
 Cross-validation distributes this risk across folds and produces a more honest
 estimate of out-of-sample performance. The choice of protocol is therefore
-not arbitrary — it is a direct consequence of dataset size and participant
-coverage, and is documented as such.
+not arbitrary as it is a direct consequence of dataset size and participant
+coverage and is documented as such.
 
 ### Evaluation metric
 
 The single reported metric is **macro-F1** (the unweighted mean of per-class
 F1 scores). Macro-F1 is used rather than accuracy because the class distribution
-is imbalanced, and a majority-class classifier would achieve misleadingly high
+is imbalanced and a majority-class classifier would achieve misleadingly high
 accuracy. Macro-F1 weights each class equally regardless of its frequency,
 making it sensitive to performance on minority classes.
 
