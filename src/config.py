@@ -128,3 +128,10 @@ def print_config():
     print(f"Lang filter  : {LANG_FILTER}")
     print(f"MAX_LEN      : {MAX_LEN}  (override after audit)")
     print("=" * 55)
+
+def main():
+    print_config()
+
+
+if __name__ == "__main__":
+    main()
