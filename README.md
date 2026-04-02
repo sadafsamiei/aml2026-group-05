@@ -8,5 +8,5 @@ python scripts/train_transformer_audio.py
 
 Once expansion arrives (300+ examples, 4 classes), switch to full:
 ```bash
---python scripts/train_transformer_audio.py --preset full
+python scripts/train_transformer_audio.py --preset full
 ```
