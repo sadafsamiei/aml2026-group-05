@@ -227,18 +227,34 @@ def train_model(
 # ---------------------------------------------------------------------------
 
 def print_classification_report(preds, labels, split_name: str = ""):
-    """Print a full per-class classification report."""
-    label_names = [LABEL_DECODER.get(i, str(i)) for i in range(len(CLASS_NAMES))]
-    title = f"Classification Report — {split_name}" if split_name else \
+    """
+    Print a per-class classification report.
+
+    Uses only the integer class IDs actually present in labels+preds so the
+    report never crashes when the current data subset contains fewer classes
+    than the full label set (e.g. only INTER and PLTOY when MOVE and EXTEV
+    have no spectrograms yet).
+    """
+    present_ids   = sorted(set(labels) | set(preds))
+    present_names = [LABEL_DECODER.get(i, str(i)) for i in present_ids]
+
+    if len(present_ids) < len(CLASS_NAMES):
+        missing = [LABEL_DECODER.get(i, str(i))
+                   for i in range(len(CLASS_NAMES)) if i not in present_ids]
+        print(f"  \u2139  Classes absent from this split "
+              f"(no spectrograms yet): {missing}")
+
+    title = f"Classification Report \u2014 {split_name}" if split_name else \
             "Classification Report"
-    print(f"\n{'='*55}")
+    print(f"\n" + "="*55)
     print(title)
     print("="*55)
     print(classification_report(
         labels, preds,
-        target_names=label_names,
-        digits=3,
-        zero_division=0,
+        labels       = present_ids,
+        target_names = present_names,
+        digits       = 3,
+        zero_division= 0,
     ))
 
 

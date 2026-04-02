@@ -38,7 +38,7 @@ from torch.utils.data import DataLoader
 
 import config as cfg
 from config import (
-    CLASS_NAMES, LABEL_ENCODER, N_CLASSES,
+    CLASS_NAMES, LABEL_ENCODER, LABEL_DECODER, N_CLASSES,
     HPARAM_DEFAULTS, HPARAM_GRID,
     MODELS_DIR, RESULTS_DIR, FIGURES_DIR,
     RANDOM_SEED,
@@ -109,16 +109,20 @@ def plot_confusion_matrix(preds, labels, save_path: Path, title: str = ""):
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from sklearn.metrics import ConfusionMatrixDisplay
+        from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 
-        fig, ax = plt.subplots(figsize=(6, 5))
-        ConfusionMatrixDisplay.from_predictions(
-            labels, preds,
-            display_labels=CLASS_NAMES,
-            ax=ax, colorbar=False,
-            normalize="true",
-            values_format=".2f",
-        )
+        # Only show classes actually present in this split —
+        # avoids matplotlib crashing when EXTEV/MOVE have no spectrograms yet.
+        present_ids   = sorted(set(labels) | set(preds))
+        present_names = [LABEL_DECODER.get(i, str(i)) for i in present_ids]
+
+        cm  = confusion_matrix(labels, preds, labels=present_ids, normalize="true")
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm,
+                                      display_labels=present_names)
+
+        fig, ax = plt.subplots(figsize=(max(4, len(present_ids) * 2),
+                                        max(3, len(present_ids) * 1.8)))
+        disp.plot(ax=ax, colorbar=False, values_format=".2f")
         ax.set_title(title or "Confusion Matrix (normalised)")
         plt.tight_layout()
         save_path.parent.mkdir(parents=True, exist_ok=True)
