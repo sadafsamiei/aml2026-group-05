@@ -5,28 +5,20 @@ Single source of truth for all paths, constants, and hyperparameters.
 
 RenkuLab path layout
 ---------------------
-The 'data' dataset (linked to SwitchDrive AML_Project) is mounted as a
-subfolder of your repository. Based on your session output the layout is:
-
     /home/renku/work/
-    └── aml-project/          ← DATA_DIR  (the mounted dataset folder)
+    └── aml-project/          ← DATA_DIR
         ├── spectrograms/
         ├── vocalisations/
         ├── contexts_vocalisation_combined_df.csv
-        ├── mfccs_batch1.csv
         ├── splits/            ← created automatically
         ├── models/            ← created automatically
         ├── results/           ← created automatically
         └── figures/           ← created automatically
-
-If your layout differs, change DATA_DIR below — everything else derives from it.
 """
 
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# ★ ONLY CHANGE THIS if your data folder is somewhere else ★
-# ---------------------------------------------------------------------------
+
 DATA_DIR = Path("/home/renku/work/aml-project")
 RES_DIR = Path("/home/renku/work/data")
 # ---------------------------------------------------------------------------
@@ -59,21 +51,47 @@ N_CLASSES     = len(CLASS_NAMES)
 
 # ---------------------------------------------------------------------------
 # Language filter
-# 'shp'  → Shipibo-Conibo only  (default, recommended)
-# None   → keep all languages in the CSV
 # ---------------------------------------------------------------------------
-LANG_FILTER = "shp"
+LANG_FILTER = None   # 'shp' = Shipibo-Conibo only; None = all languages
 
 # ---------------------------------------------------------------------------
-# Spectrogram / sequence constants  (set dynamically after audit)
+# Spectrogram constants (set dynamically after audit)
 # ---------------------------------------------------------------------------
 F_DIM   = None
 MAX_LEN = 150    # safe fallback; overridden by audit_spectrograms()
 
 # ---------------------------------------------------------------------------
-# Training hyperparameters
+# Hyperparameter presets
+#
+# HPARAM_DEFAULTS  — used for a single training run (python train_...py)
+#
+# Two named presets:
+#
+#   HPARAM_SMALL  (current default)
+#     Appropriate for < 100 training examples.
+#     ~26k parameters — stable training, low overfitting risk.
+#     Switch to HPARAM_FULL once the 1500+ spectrograms arrive.
+#
+#   HPARAM_FULL
+#     Appropriate for 300+ training examples.
+#     ~193k parameters — more expressive but needs more data to regularise.
+#     To use: python scripts/train_transformer_audio.py --preset full
+#             or: python scripts/train_transformer_audio.py --d_model 64 --num_layers 2
 # ---------------------------------------------------------------------------
-HPARAM_DEFAULTS = {
+
+HPARAM_SMALL = {
+    "d_model"     : 32,    # << reduced from 64
+    "nhead"       : 4,
+    "num_layers"  : 1,     # << reduced from 2
+    "dropout"     : 0.4,   # << slightly higher dropout for small N
+    "lr"          : 1e-3,
+    "weight_decay": 1e-4,
+    "batch_size"  : 8,     # << smaller batch so optimizer sees more updates
+    "epochs"      : 150,   # << more epochs to compensate for smaller model
+    "patience"    : 20,    # << more patience for noisy val signal
+}
+
+HPARAM_FULL = {
     "d_model"     : 64,
     "nhead"       : 4,
     "num_layers"  : 2,
@@ -85,17 +103,30 @@ HPARAM_DEFAULTS = {
     "patience"    : 15,
 }
 
+# Active default — uses SMALL until expansion data arrives
+HPARAM_DEFAULTS = HPARAM_SMALL
+
+# ---------------------------------------------------------------------------
+# Hyperparameter grid for grid search (--grid_search flag)
+# Covers both small and full model sizes so the search works regardless
+# of which stage you are at.
+# ---------------------------------------------------------------------------
 HPARAM_GRID = [
-    {"d_model": 32,  "num_layers": 1, "dropout": 0.3, "lr": 1e-3},
-    {"d_model": 32,  "num_layers": 1, "dropout": 0.5, "lr": 1e-3},
-    {"d_model": 64,  "num_layers": 2, "dropout": 0.3, "lr": 1e-3},
-    {"d_model": 64,  "num_layers": 2, "dropout": 0.5, "lr": 1e-3},
-    {"d_model": 64,  "num_layers": 2, "dropout": 0.3, "lr": 5e-4},
-    {"d_model": 64,  "num_layers": 2, "dropout": 0.5, "lr": 5e-4},
-    {"d_model": 128, "num_layers": 2, "dropout": 0.5, "lr": 5e-4},
-    {"d_model": 128, "num_layers": 3, "dropout": 0.5, "lr": 5e-4},
+    # Small configs — appropriate now
+    {"d_model": 32, "num_layers": 1, "dropout": 0.3, "lr": 1e-3,  "batch_size": 8},
+    {"d_model": 32, "num_layers": 1, "dropout": 0.5, "lr": 1e-3,  "batch_size": 8},
+    {"d_model": 32, "num_layers": 1, "dropout": 0.4, "lr": 5e-4,  "batch_size": 8},
+    {"d_model": 32, "num_layers": 2, "dropout": 0.5, "lr": 5e-4,  "batch_size": 8},
+    # Full configs — use once expansion data arrives
+    {"d_model": 64, "num_layers": 2, "dropout": 0.3, "lr": 1e-3,  "batch_size": 16},
+    {"d_model": 64, "num_layers": 2, "dropout": 0.5, "lr": 1e-3,  "batch_size": 16},
+    {"d_model": 64, "num_layers": 2, "dropout": 0.3, "lr": 5e-4,  "batch_size": 16},
+    {"d_model": 128,"num_layers": 2, "dropout": 0.5, "lr": 5e-4,  "batch_size": 16},
 ]
 
+# ---------------------------------------------------------------------------
+# Reproducibility
+# ---------------------------------------------------------------------------
 RANDOM_SEED = 42
 
 # ---------------------------------------------------------------------------
@@ -114,7 +145,9 @@ def print_config():
     print(f"Spec dir     : {SPEC_DIR}  (exists={SPEC_DIR.exists()})")
     print(f"Contexts CSV : {CONTEXTS_CSV}  (exists={CONTEXTS_CSV.exists()})")
     print(f"Results dir  : {RESULTS_DIR}")
+    print(f"Models dir   : {MODELS_DIR}")
+    print(f"Figures dir  : {FIGURES_DIR}")
     print(f"Classes      : {CLASS_NAMES}")
     print(f"Lang filter  : {LANG_FILTER!r}")
-    print(f"MAX_LEN      : {MAX_LEN}  (override after audit)")
+    print(f"Active preset: {'SMALL (d=32, L=1)' if HPARAM_DEFAULTS is HPARAM_SMALL else 'FULL (d=64, L=2)'}")
     print("=" * 55)
