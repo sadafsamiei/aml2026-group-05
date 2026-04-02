@@ -5,5 +5,5 @@ For the small dataset, run the script below:
 python scripts/train_transformer_audio.py
 
 
-Once expansion arrives (300+ examples, 4 classes) — switch to full
+Once expansion arrives (300+ examples, 4 classes) — switch to full:
 python scripts/train_transformer_audio.py --preset full
