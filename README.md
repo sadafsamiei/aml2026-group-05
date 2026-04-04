@@ -58,14 +58,17 @@ viability automatically at each run
 │   ├── test_pipeline.py           ← 10-step end-to-end functionality test
 │   ├── train_transformer_audio.py ← Model 2 training entry point
 │   └── train_transformer_attn.py  ← Model 3 training entry point
-└── data/                          ← SwitchDrive-mounted dataset folder
+├── data/                          ← SwitchDrive-mounted dataset folder (Output and Results)
+│   ├── splits/                    ← fold CSVs (created automatically)
+│   ├── models/                    ← checkpoints (.pt)
+│   ├── results/                   ← JSON metrics
+│   └── figures/                   ← training curves + confusion matrices
+└── aml-project/                   ← SwitchDrive-mounted dataset folder (Input dataset)
     ├── spectrograms/              ← spectrogram1.png ... spectrogram51.png (for now)
     ├── vocalisations/             ← .wav files
     ├── contexts_vocalisation_combined_df.csv
-    ├── splits/                    ← fold CSVs (created automatically)
-    ├── models/                    ← checkpoints (.pt)
-    ├── results/                   ← JSON metrics
-    └── figures/                   ← training curves + confusion matrices
+    ├── vocalisations/             ← .wav files
+    ├── contexts_vocalisation_combined_df.csv
 ```
 
 ---
