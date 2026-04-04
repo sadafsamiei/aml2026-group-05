@@ -63,7 +63,7 @@ viability automatically at each run
 │   ├── train_transformer_audio.py ← Model 2 training entry point
 │   └── train_transformer_attn.py  ← Model 3 training entry point
 └── data/                          ← SwitchDrive-mounted dataset folder
-    ├── spectrograms/              ← spectrogram1.png ... spectrogram51.png
+    ├── spectrograms/              ← spectrogram1.png ... spectrogram51.png (for now)
     ├── vocalisations/             ← .wav files
     ├── contexts_vocalisation_combined_df.csv
     ├── splits/                    ← fold CSVs (created automatically)
@@ -86,16 +86,7 @@ pip install -r requirements.txt
 
 ## Running the models
 
-### Quick sanity test (always run this first, < 60 seconds)
-
-```bash
-python scripts/test_pipeline.py
-```
-
-Runs 10 checks: data loading → split construction → dataset shapes →
-forward pass → loss → gradients → 2 training epochs → evaluation.
-
----
+### Model 1 - Logistic Regression (TBD)
 
 ### Model 2 — Audio-only Transformer
 
