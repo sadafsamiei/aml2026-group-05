@@ -499,3 +499,127 @@ class SpectrogramDataset(Dataset):
         cnts = np.bincount(y, minlength=len(self.label_encoder)).astype(float)
         w    = 1.0 / (cnts + 1e-6)
         return torch.FloatTensor(w / w.sum() * len(self.label_encoder))
+
+
+# ---------------------------------------------------------------------------
+# Metadata utilities  (used by AttentivePoolingTransformer)
+# ---------------------------------------------------------------------------
+
+def check_metadata_viability(df: "pd.DataFrame", verbose: bool = True) -> dict:
+    """
+    Check whether age and gender can safely be used as metadata inputs,
+    i.e. they do not uniquely identify participants.
+
+    Returns a dict with viability flags and a recommended USE_EXTERNAL_META
+    value.
+    """
+    import pandas as pd
+
+    n_children         = df["child"].nunique()
+    age_per_child      = df.groupby("child")["age"].first()
+    gender_per_child   = df.groupby("child")["gender"].first()
+    n_unique_ages      = age_per_child.nunique()
+    n_unique_genders   = gender_per_child.nunique()
+
+    age_is_identity    = (n_unique_ages    == n_children)
+    gender_is_identity = (n_unique_genders == n_children)
+    metadata_safe      = (n_children >= 4 and
+                          not age_is_identity and
+                          not gender_is_identity)
+
+    result = {
+        "n_children"          : n_children,
+        "n_unique_ages"       : n_unique_ages,
+        "n_unique_genders"    : n_unique_genders,
+        "age_is_identity"     : age_is_identity,
+        "gender_is_identity"  : gender_is_identity,
+        "USE_EXTERNAL_META"   : metadata_safe,
+    }
+
+    if verbose:
+        print("\n--- Metadata viability check ---")
+        print(f"  Participants   : {n_children}")
+        print(f"  Unique ages    : {n_unique_ages}  "
+              f"{'(= identity proxy)' if age_is_identity else '(safe)'}")
+        print(f"  Unique genders : {n_unique_genders}  "
+              f"{'(= identity proxy)' if gender_is_identity else '(safe)'}")
+        print(f"  → USE_EXTERNAL_META = {metadata_safe}")
+        if not metadata_safe:
+            print(f"    Reason: metadata is collinear with participant identity.")
+            print(f"    Using learned query instead (no external metadata).")
+        else:
+            print(f"    External metadata (age + gender) is safe to use as query.")
+
+    return result
+
+
+def compute_meta_stats(train_df: "pd.DataFrame") -> dict:
+    """
+    Compute age normalisation statistics from the training split only.
+    Call this after split construction; apply the returned stats to all splits.
+
+    Returns
+    -------
+    dict with keys: 'age_mean', 'age_std', 'gender_map'
+    """
+    age_mean   = float(train_df["age"].mean())
+    age_std    = float(train_df["age"].std()) + 1e-8
+    genders    = sorted(train_df["gender"].dropna().unique())
+    gender_map = {g: float(i) / max(len(genders) - 1, 1)
+                  for i, g in enumerate(genders)}
+
+    print(f"  Meta stats (from train split):")
+    print(f"    age_mean = {age_mean:.2f}, age_std = {age_std:.2f}")
+    print(f"    gender_map = {gender_map}")
+    return {"age_mean": age_mean, "age_std": age_std, "gender_map": gender_map}
+
+
+# ---------------------------------------------------------------------------
+# Metadata-aware Dataset
+# ---------------------------------------------------------------------------
+
+class MetadataSpectrogramDataset(SpectrogramDataset):
+    """
+    Extension of SpectrogramDataset that also returns a metadata vector.
+    Used for training the AttentivePoolingTransformer (Model 3).
+
+    Returns per item:
+        x        : (max_len, f_dim)   float32
+        pad_mask : (max_len,)         bool
+        label    : ()                 int64
+        meta     : (2,)               float32  — [age_normalised, gender_binary]
+
+    If use_external_meta is False, a zero vector is returned for meta
+    so the training loop works without branching. In this case the meta
+    input is simply not passed to the model.
+
+    Parameters
+    ----------
+    meta_stats       : dict from compute_meta_stats() — must be from train split
+    use_external_meta: if False, returns zeros for meta (learned query mode)
+    """
+
+    def __init__(self, split_df, label_encoder, max_len, f_dim,
+                 meta_stats: dict = None,
+                 use_external_meta: bool = False):
+        super().__init__(split_df, label_encoder, max_len, f_dim)
+        self.use_external_meta = use_external_meta
+        self.meta_stats        = meta_stats or {}
+
+    def __getitem__(self, idx):
+        x, pad_mask, label = super().__getitem__(idx)
+
+        if self.use_external_meta and self.meta_stats:
+            row        = self.records.iloc[idx]
+            age_mean   = self.meta_stats["age_mean"]
+            age_std    = self.meta_stats["age_std"]
+            gender_map = self.meta_stats["gender_map"]
+
+            age_norm   = (float(row["age"]) - age_mean) / age_std
+            gender_val = gender_map.get(str(row.get("gender", "U")), 0.5)
+            meta       = torch.FloatTensor([age_norm, gender_val])
+        else:
+            # Learned query mode — return zeros (not used by model)
+            meta = torch.zeros(2, dtype=torch.float32)
+
+        return x, pad_mask, label, meta
