@@ -6,7 +6,7 @@ Results and model checkpoints are saved on SwitchDrive:
 
 ---
 
-## What this project does
+## The Progress so far
 
 This project trains neural models to classify short child vocalisation
 recordings into one of four interactional context categories:
@@ -17,10 +17,6 @@ recordings into one of four interactional context categories:
 | **MOVE** | Movement activity | MOVE2, MOVE3, MOVE5 |
 | **INTER** | Social interaction | INTER1, INTER2, INTER4–INTER7 |
 | **EXTEV** | External event | EXTEV1–EXTEV3, EXTEV6 |
-
-Data comes from the ACQDIV corpus.
-Each clip is represented as a **spectrogram PNG** — a 2D time-frequency
-image of the audio — which the models read as a sequence of frames.
 
 ---
 
@@ -34,7 +30,7 @@ image of the audio — which the models read as a sequence of frames.
 | Evaluation protocol | 5-fold CV (within-participant) | LOPO or holdout |
 | Metadata query | Learned (age = identity) | External (age + gender) |
 
-The pipeline detects participant count, class coverage, and metadata
+The pipeline detects participant count, class coverage and metadata
 viability automatically at each run 
 
 ---
@@ -45,7 +41,7 @@ viability automatically at each run
 |---|---|---|---|
 | 1 | Logistic regression baseline | `train_lr_baseline.py` | 🔲 TBD |
 | 2 | Audio-only Transformer (mean pooling) | `train_transformer_audio.py` | ✅ Almost Done |
-| 3 | Attentive Pooling Transformer | `train_transformer_attn.py` | ✅ Almost Done|
+| 3 | Attentive Pooling Transformer | `train_transformer_attn.py` | ✅ Almost Done, metadata adaptation |
 
 ---
 
@@ -129,14 +125,14 @@ python scripts/train_transformer_attn.py --baseline_test_f1 0.717
 python scripts/train_transformer_attn.py --preset full
 ```
 
-The script checks metadata viability at `[2b]` each run:
-- With 1 participant: **learned query** (no external metadata — current)
-- With 4+ participants where age/gender are not collinear with identity:
-  **external metadata query** (age + gender projected to query vector)
+The model needs a "query" — basically a starting point that tells the attention mechanism what to look for in the audio. There are two ways to provide it:
+
+Learned query (current): The model just figures it out on its own during training. It's used now because you only have one child, so age and gender are useless as inputs — they're the same for every example.
+External metadata query: Once we have enough children with varying ages and genders, those get fed in as the query. The idea is that what matters acoustically might differ by age or gender, so the model can attend to different parts of the audio depending on who the child is.
 
 ---
 
-## Current results (preliminary — 43 examples, 2 classes, 1 participant)
+## Current results (preliminary — 43 examples, 2 classes, 1 participant) - TBD 
 
 > ⚠ These results reflect **within-participant generalisation only**
 > (5-fold CV, Scenario C). They cannot be interpreted as evidence of
@@ -203,8 +199,7 @@ per fold, a single mis-classified example shifts macro-F1 by ~0.12.
 
 ## What happens automatically when the expansion data arrives
 
-Just add the new PNG files to `data/spectrograms/` and re-run either
-training script. The pipeline will:
+ The pipeline will:
 
 1. Detect the increased participant count
 2. Switch the evaluation protocol automatically:
