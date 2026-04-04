@@ -41,7 +41,7 @@ viability automatically at each run
 |---|---|---|---|
 | 1 | Logistic regression baseline | `train_lr_baseline.py` | 🔲 TBD |
 | 2 | Audio-only Transformer (mean pooling) | `train_transformer_audio.py` | ✅ Almost Done |
-| 3 | Attentive Pooling Transformer | `train_transformer_attn.py` | ✅ Almost Done, metadata adaptation |
+| 3 | Attentive Pooling Transformer | `train_transformer_attn.py` | ✅ Almost Done, metadata adaptation needed |
 
 ---
 
