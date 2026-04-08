@@ -3,151 +3,146 @@ config.py
 ---------
 Single source of truth for all paths, constants, and hyperparameters.
 
-RenkuLab path layout
----------------------
-    /home/renku/work/
-    └── aml-project/          ← DATA_DIR
-        ├── spectrograms/
-        ├── vocalisations/
-        ├── contexts_vocalisation_combined_df.csv
-        ├── splits/            ← created automatically
-        ├── models/            ← created automatically
-        ├── results/           ← created automatically
-        └── figures/           ← created automatically
+Path layout on RenkuLab
+------------------------
+Input data (read-only SwitchDrive mount):
+    DATA_DIR = /home/renku/work/aml-project/training_data/
+        ├── anonymised_audios/   ← audio_0000.wav … audio_1008.wav
+        ├── spectrograms/        ← audio_0000.png … (generated once)
+        └── contextsvocs_groupproject_2026-04-07_133933.csv
+
+Output / results (writable, syncs to SwitchDrive data folder):
+    RES_DIR = /home/renku/work/data/
+        ├── splits/              ← train/val/test CSVs
+        ├── models/              ← model checkpoints (.pt)
+        ├── results/             ← JSON metrics
+        └── figures/             ← training curves + confusion matrices
 """
 
 from pathlib import Path
 
-
-DATA_DIR = Path("/home/renku/work/aml-project")
-RES_DIR = Path("/home/renku/work/data")
 # ---------------------------------------------------------------------------
-# Input paths  (derived from DATA_DIR)
+# ★ Adjust these two paths if your mount points differ ★
 # ---------------------------------------------------------------------------
-SPEC_DIR     = DATA_DIR / "spectrograms"
-WAV_DIR      = DATA_DIR / "vocalisations"
-CONTEXTS_CSV = DATA_DIR / "contexts_vocalisation_combined_df.csv"
+DATA_DIR = Path("/home/renku/work/aml-project/training_data")
+RES_DIR  = Path("/home/renku/work/data")
 
 # ---------------------------------------------------------------------------
-# Output paths  — all inside DATA_DIR so they sync back to SwitchDrive
+# Input paths  (derived from DATA_DIR — READ ONLY)
 # ---------------------------------------------------------------------------
+WAV_DIR      = DATA_DIR / "anonymized_audios"     # audio_0000.wav … audio_1008.wav
+CONTEXTS_CSV = DATA_DIR / "contextsvocs_groupproject_2026-04-07_133933.csv"
+
+# ---------------------------------------------------------------------------
+# Output paths  (derived from RES_DIR — READ/WRITE, synced to SwitchDrive)
+# ---------------------------------------------------------------------------
+SPEC_DIR    = RES_DIR / "spectrograms"   # generated from WAV files — writable
 SPLITS_DIR  = RES_DIR / "splits"
 MODELS_DIR  = RES_DIR / "models"
 RESULTS_DIR = RES_DIR / "results"
 FIGURES_DIR = RES_DIR / "figures"
 
 # ---------------------------------------------------------------------------
-# Label mapping
+# Label mapping  (2026 dataset labels → 4 coarse classes)
+#
+# PLTOY ← PLAY1, PLAY+, TOYMO
+# MOVE  ← WALK, CARRIED, ARRIVES, LEAVES, FALLS
+# INTER ← CONV, OBSERV_INTER, SEEK_INTER, GROOMED, AGGR
+# EXTEV ← FOOD, REST, SLE
 # ---------------------------------------------------------------------------
-MOVE_LABELS  = {"MOVE2", "MOVE3", "MOVE5"}
-INTER_LABELS = {"INTER1", "INTER2", "INTER4", "INTER5", "INTER6", "INTER7"}
-EXTEV_LABELS = {"EXTEV1", "EXTEV2", "EXTEV3", "EXTEV6"}
-PLTOY_LABELS = {"PLTOY"}
+PLTOY_LABELS = {"PLAY1", "PLAY+", "TOYMO"}
+MOVE_LABELS  = {"WALK", "CARRIED", "ARRIVES", "LEAVES", "FALLS"}
+INTER_LABELS = {"CONV", "OBSERV_INTER", "SEEK_INTER", "GROOMED", "AGGR"}
+EXTEV_LABELS = {"FOOD", "REST", "SLE"}
 
 CLASS_NAMES   = ["EXTEV", "INTER", "MOVE", "PLTOY"]
 LABEL_ENCODER = {c: i for i, c in enumerate(CLASS_NAMES)}
 LABEL_DECODER = {i: c for c, i in LABEL_ENCODER.items()}
 N_CLASSES     = len(CLASS_NAMES)
 
-# ---------------------------------------------------------------------------
-# Language filter
-# ---------------------------------------------------------------------------
-LANG_FILTER = None   # 'shp' = Shipibo-Conibo only; None = all languages
+# No language filter — the dataset spans Shipibo, Tagalog, Vietnamese
+# intentionally. All three languages are used together.
+LANG_FILTER = None
 
 # ---------------------------------------------------------------------------
-# Spectrogram constants (set dynamically after audit)
+# Spectrogram generation parameters
+# Used by generate_spectrograms.py and determines F_DIM
 # ---------------------------------------------------------------------------
-F_DIM   = None
-MAX_LEN = 150    # safe fallback; overridden by audit_spectrograms()
+SPEC_SR    = 16000   # resample rate (Hz)
+SPEC_N_MELS = 128    # mel frequency bins  →  F_DIM = 128
+SPEC_HOP   = 256     # hop length in samples
+SPEC_N_FFT = 1024    # FFT window size
+SPEC_FMIN  = 20      # min frequency (Hz)
+SPEC_FMAX  = 8000    # max frequency (Hz)
+
+# ---------------------------------------------------------------------------
+# Sequence constants (set here; verified at runtime by audit_spectrograms)
+# ---------------------------------------------------------------------------
+F_DIM   = 400    # image height after resize (OUT_HEIGHT in generate_spectrograms.py)
+MAX_LEN = 1000   # image width after resize  (OUT_WIDTH  in generate_spectrograms.py)
+                 # All images are the same size → padding_mask is always all-False
 
 # ---------------------------------------------------------------------------
 # Hyperparameter presets
 #
-# HPARAM_DEFAULTS  — used for a single training run (python train_...py)
-#
-# Two named presets:
-#
-#   HPARAM_SMALL  (current default)
-#     Appropriate for < 100 training examples.
-#     ~26k parameters — stable training, low overfitting risk.
-#     Switch to HPARAM_FULL once the 1500+ spectrograms arrive.
-#
-#   HPARAM_FULL
-#     Appropriate for 300+ training examples.
-#     ~193k parameters — more expressive but needs more data to regularise.
-#     To use: python scripts/train_transformer_audio.py --preset full
-#             or: python scripts/train_transformer_audio.py --d_model 64 --num_layers 2
+# HPARAM_SMALL → < 100 training examples  (pilot fallback)
+# HPARAM_FULL  → 300+ training examples   (current: 1009 clips)
 # ---------------------------------------------------------------------------
-
 HPARAM_SMALL = {
-    "d_model"     : 32,    # << reduced from 64
-    "nhead"       : 4,
-    "num_layers"  : 1,     # << reduced from 2
-    "dropout"     : 0.4,   # << slightly higher dropout for small N
-    "lr"          : 1e-3,
-    "weight_decay": 1e-4,
-    "batch_size"  : 8,     # << smaller batch so optimizer sees more updates
-    "epochs"      : 150,   # << more epochs to compensate for smaller model
-    "patience"    : 20,    # << more patience for noisy val signal
+    "d_model": 32, "nhead": 4, "num_layers": 1,
+    "dropout": 0.4, "lr": 1e-3, "weight_decay": 1e-4,
+    "batch_size": 8, "epochs": 150, "patience": 20,
 }
 
 HPARAM_FULL = {
-    "d_model"     : 64,
-    "nhead"       : 4,
-    "num_layers"  : 2,
-    "dropout"     : 0.3,
-    "lr"          : 1e-3,
-    "weight_decay": 1e-4,
-    "batch_size"  : 16,
-    "epochs"      : 100,
-    "patience"    : 15,
+    "d_model": 64, "nhead": 4, "num_layers": 2,
+    "dropout": 0.3, "lr": 1e-3, "weight_decay": 1e-4,
+    "batch_size": 32, "epochs": 100, "patience": 15,
 }
 
-# Active default — uses SMALL until expansion data arrives
-HPARAM_DEFAULTS = HPARAM_SMALL
+# Active default — FULL because we have 1009 examples
+HPARAM_DEFAULTS = HPARAM_FULL
 
-# ---------------------------------------------------------------------------
-# Hyperparameter grid for grid search (--grid_search flag)
-# Covers both small and full model sizes so the search works regardless
-# of which stage you are at.
-# ---------------------------------------------------------------------------
+# Hyperparameter grid (used with --grid_search flag)
 HPARAM_GRID = [
-    # Small configs — appropriate now
-    {"d_model": 32, "num_layers": 1, "dropout": 0.3, "lr": 1e-3,  "batch_size": 8},
-    {"d_model": 32, "num_layers": 1, "dropout": 0.5, "lr": 1e-3,  "batch_size": 8},
-    {"d_model": 32, "num_layers": 1, "dropout": 0.4, "lr": 5e-4,  "batch_size": 8},
-    {"d_model": 32, "num_layers": 2, "dropout": 0.5, "lr": 5e-4,  "batch_size": 8},
-    # Full configs — use once expansion data arrives
-    {"d_model": 64, "num_layers": 2, "dropout": 0.3, "lr": 1e-3,  "batch_size": 16},
-    {"d_model": 64, "num_layers": 2, "dropout": 0.5, "lr": 1e-3,  "batch_size": 16},
-    {"d_model": 64, "num_layers": 2, "dropout": 0.3, "lr": 5e-4,  "batch_size": 16},
-    {"d_model": 128,"num_layers": 2, "dropout": 0.5, "lr": 5e-4,  "batch_size": 16},
+    {"d_model": 32,  "num_layers": 1, "dropout": 0.3, "lr": 1e-3,  "batch_size": 16},
+    {"d_model": 32,  "num_layers": 1, "dropout": 0.5, "lr": 1e-3,  "batch_size": 16},
+    {"d_model": 64,  "num_layers": 2, "dropout": 0.3, "lr": 1e-3,  "batch_size": 32},
+    {"d_model": 64,  "num_layers": 2, "dropout": 0.5, "lr": 1e-3,  "batch_size": 32},
+    {"d_model": 64,  "num_layers": 2, "dropout": 0.3, "lr": 5e-4,  "batch_size": 32},
+    {"d_model": 128, "num_layers": 2, "dropout": 0.3, "lr": 5e-4,  "batch_size": 32},
+    {"d_model": 128, "num_layers": 3, "dropout": 0.3, "lr": 5e-4,  "batch_size": 32},
+    {"d_model": 128, "num_layers": 3, "dropout": 0.5, "lr": 5e-4,  "batch_size": 32},
 ]
 
-# ---------------------------------------------------------------------------
-# Reproducibility
-# ---------------------------------------------------------------------------
 RANDOM_SEED = 42
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 def make_output_dirs():
-    for d in [SPLITS_DIR, MODELS_DIR, RESULTS_DIR, FIGURES_DIR]:
+    """Create all output directories. Safe to call multiple times."""
+    for d in [SPEC_DIR, SPLITS_DIR, MODELS_DIR, RESULTS_DIR, FIGURES_DIR]:
         d.mkdir(parents=True, exist_ok=True)
 
 
 def print_config():
-    print("=" * 55)
+    preset = ("FULL (d=64, L=2)"  if HPARAM_DEFAULTS is HPARAM_FULL
+              else "SMALL (d=32, L=1)")
+    print("=" * 62)
     print("PROJECT CONFIGURATION")
-    print("=" * 55)
-    print(f"Data dir     : {DATA_DIR}  (exists={DATA_DIR.exists()})")
-    print(f"Spec dir     : {SPEC_DIR}  (exists={SPEC_DIR.exists()})")
-    print(f"Contexts CSV : {CONTEXTS_CSV}  (exists={CONTEXTS_CSV.exists()})")
-    print(f"Results dir  : {RESULTS_DIR}")
-    print(f"Models dir   : {MODELS_DIR}")
-    print(f"Figures dir  : {FIGURES_DIR}")
-    print(f"Classes      : {CLASS_NAMES}")
-    print(f"Lang filter  : {LANG_FILTER!r}")
-    print(f"Active preset: {'SMALL (d=32, L=1)' if HPARAM_DEFAULTS is HPARAM_SMALL else 'FULL (d=64, L=2)'}")
-    print("=" * 55)
+    print("=" * 62)
+    print(f"DATA_DIR      : {DATA_DIR}")
+    print(f"  WAV dir     : {WAV_DIR}  (exists={WAV_DIR.exists()})")
+    print(f"  Contexts CSV: {CONTEXTS_CSV.name}  (exists={CONTEXTS_CSV.exists()})")
+    print(f"RES_DIR       : {RES_DIR}  (read/write)")
+    print(f"  Spec dir    : {SPEC_DIR}  (exists={SPEC_DIR.exists()})")
+    print(f"  Splits      : {SPLITS_DIR}")
+    print(f"  Models      : {MODELS_DIR}")
+    print(f"  Results     : {RESULTS_DIR}")
+    print(f"  Figures     : {FIGURES_DIR}")
+    print(f"Classes       : {CLASS_NAMES}")
+    print(f"Lang filter   : {LANG_FILTER!r}  (None = all languages)")
+    print(f"Active preset : {preset}")
+    print(f"F_DIM / MAX_LEN : {F_DIM} / {MAX_LEN}  (fixed image size: {MAX_LEN}×{F_DIM})")
+    print("=" * 62)
