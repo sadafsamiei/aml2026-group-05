@@ -113,13 +113,13 @@ aml2026-group-05/
 
 **RenkuLab path layout:**
 ```
-DATA_DIR = /home/renku/work/aml-project/training_data/   ← READ ONLY
+DATA_DIR = /home/renku/work/aml-project/training_data/   ← Input data
   ├── denoised_audios/            ← audio_0000.wav … audio_1008.wav (denoised)
   ├── contextsvocs_groupproject_2026-04-09_104847.csv  ← ACTIVE CSV
   ├── mfccs_070426.csv            ← MFCC features (for Model 1)
   └── MFCC_Full_Raw_20_nico_.csv  ← MFCC features, 20 coefficients (for Model 1)
 
-RES_DIR = /home/renku/work/data/   ← READ/WRITE
+RES_DIR = /home/renku/work/data/   ← Results
   ├── spectrograms/   ← 1009 grayscale PNGs, 128×T px (from denoised audio)
   ├── splits/         ← train.csv (n=569), val.csv (n=171), test.csv (n=269)
   ├── models/         ← checkpoints (.pt)
@@ -147,11 +147,7 @@ python scripts/generate_spectrograms.py --skip_existing  # safe re-run
 ```
 
 Produces clean grayscale mel spectrogram PNGs (128 mel bins × T frames, no axes,
-no labels). The model loads these and resizes to F_DIM=128 × MAX_LEN=230 inside
-`SpectrogramDataset.__getitem__`. Confirm the DataLoader sanity line shows:
-```
-Batch: x=torch.Size([32, 230, 128])   ← correct
-```
+no labels).
 
 ### Step 1 — Train Model 2
 
@@ -183,7 +179,6 @@ Uses `MFCC_Full_Raw_20_nico_.csv` with the same holdout splits as Models 2 and 3
 
 | Preset | d_model | layers | batch | When to use |
 |---|---|---|---|---|
-| `small` | 32 | 1 | 8 | < 100 training examples |
 | `full` *(default)* | 64 | 2 | 32 | 300+ training examples — current |
 
 ---
