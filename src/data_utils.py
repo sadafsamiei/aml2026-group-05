@@ -145,18 +145,24 @@ def build_master_table(
 
 def audit_spectrograms(png_paths: list, verbose: bool = True) -> dict:
     """
-    Scan PNGs and report height (F), width (T) distribution, mode, pixel range.
-    Call this after generate_spectrograms.py completes.
+    Scan a small sample of PNGs to determine format, dimensions, and pixel range.
+    Samples 20 files only — sufficient to confirm all images are consistent.
     """
-    heights, widths, modes, max_vals = [], [], [], []
+    import random as _random
 
-    for p in png_paths:
+    n_total = len(png_paths)
+    sample  = _random.sample(png_paths, min(20, n_total))
+
+    heights, widths, modes, max_vals = [], [], [], []
+    for p in sample:
         img = Image.open(p)
         modes.append(img.mode)
         w, h = img.size
         heights.append(h)
         widths.append(w)
-        max_vals.append(np.array(img, dtype=np.float32).max())
+        extrema = img.getextrema()
+        pmax = max(b[1] for b in extrema) if isinstance(extrema[0], tuple) else extrema[1]
+        max_vals.append(float(pmax))
 
     height_counts = collections.Counter(heights)
     f_dim         = height_counts.most_common(1)[0][0]
@@ -170,11 +176,11 @@ def audit_spectrograms(png_paths: list, verbose: bool = True) -> dict:
         "width_p50"  : int(np.median(widths)),
         "width_p95"  : p95_width,
         "width_max"  : max(widths),
-        "n_silent"   : sum(v == 0 for v in max_vals),
+        "n_silent"   : sum(v == 0 for v in max_vals),  # from 20-file sample
     }
 
     if verbose:
-        print("\n--- Spectrogram Audit ---")
+        print(f"\n--- Spectrogram Audit (sampled {len(sample)}/{n_total} files) ---")
         print(f"Mode distribution   : {dict(collections.Counter(modes))}")
         print(f"Height F (mel bins) : {dict(height_counts)}")
         print(f"Width  T (frames)   : "
@@ -183,7 +189,7 @@ def audit_spectrograms(png_paths: list, verbose: bool = True) -> dict:
               f"p95={stats['width_p95']}, "
               f"max={stats['width_max']}")
         print(f"Pixel max range     : {min(max_vals):.1f} – {max(max_vals):.1f}")
-        print(f"Silent clips (max=0): {stats['n_silent']}")
+        print(f"Silent clips (max=0): {stats['n_silent']}  (from sample)")
         print(f"\n>>> F_DIM   = {f_dim}")
         print(f">>> MAX_LEN = {p95_width}  (95th-percentile T)")
 

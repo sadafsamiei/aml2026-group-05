@@ -30,7 +30,7 @@ RES_DIR  = Path("/home/renku/work/data")
 # ---------------------------------------------------------------------------
 # Input paths  (derived from DATA_DIR — READ ONLY)
 # ---------------------------------------------------------------------------
-WAV_DIR      = DATA_DIR / "anonymized_audios"     # audio_0000.wav … audio_1008.wav
+WAV_DIR      = DATA_DIR / "denoised_audios"     # audio_0000.wav … audio_1008.wav
 CONTEXTS_CSV = DATA_DIR / "contextsvocs_groupproject_2026-04-09_104847.csv"
 
 # ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ SPEC_FMAX  = 8000    # max frequency (Hz)
 # Sequence constants (set here; verified at runtime by audit_spectrograms)
 # ---------------------------------------------------------------------------
 F_DIM   = 128    # mel frequency bins (actual audio resolution, not image size)
-MAX_LEN = 200    # time frame cap (p95 of actual frame counts before resizing)
+MAX_LEN = 230    # time frame cap (p95 of actual frame counts before resizing)
                  # The 1000×400 viridis PNGs are resized to MAX_LEN×F_DIM inside load_png()
 
 # ---------------------------------------------------------------------------

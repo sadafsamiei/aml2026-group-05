@@ -1,8 +1,13 @@
 """
 generate_spectrograms.py
 ------------------------
-Generate viridis mel spectrogram PNGs.
+Generate clean grayscale mel spectrogram PNGs for model training.
 Saves to RES_DIR/spectrograms/audio_XXXX.png
+
+Each PNG is a true grayscale image of shape (SPEC_N_MELS, T) — no axes,
+no colorbar, no matplotlib decoration. Pixel values map linearly from
+the dB range [-80, 0] to [0, 255]. The model loads these at native
+resolution and resizes to (MAX_LEN, F_DIM) inside SpectrogramDataset.
 
 Usage:
     python scripts/generate_spectrograms.py
@@ -11,7 +16,6 @@ Usage:
 """
 
 import argparse
-import io
 import sys
 import traceback
 from pathlib import Path
@@ -22,12 +26,17 @@ import config as cfg
 
 
 def wav_to_png(wav_path: Path, out_path: Path) -> None:
-    """Convert one WAV file to a viridis spectrogram PNG."""
+    """
+    Convert one WAV file to a clean grayscale mel spectrogram PNG.
+
+    Pipeline:
+      WAV → mono float32 → mel spectrogram → dB scale → [0,255] uint8 → PNG
+
+    The output image contains only acoustic content — no axes, labels, or
+    colorbar. Shape: (SPEC_N_MELS=128 rows, T cols) where T depends on
+    clip duration. SpectrogramDataset resizes to (F_DIM, MAX_LEN) at load time.
+    """
     import librosa
-    import librosa.display
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
     import numpy as np
     from PIL import Image
 
@@ -40,45 +49,36 @@ def wav_to_png(wav_path: Path, out_path: Path) -> None:
         n_fft=cfg.SPEC_N_FFT, hop_length=cfg.SPEC_HOP,
         n_mels=cfg.SPEC_N_MELS, fmin=cfg.SPEC_FMIN, fmax=cfg.SPEC_FMAX,
     )
-    log_mel = librosa.power_to_db(mel, ref=np.max, top_db=80)
+    # Convert to dB, clipped to [-80, 0] range
+    log_mel = librosa.power_to_db(mel, ref=np.max, top_db=80)   # (128, T), range [-80, 0]
 
-    fig, ax = plt.subplots(figsize=(9, 3), dpi=110)
-    img_plot = librosa.display.specshow(
-        log_mel,
-        sr=cfg.SPEC_SR, hop_length=cfg.SPEC_HOP,
-        x_axis="time", y_axis="mel",
-        fmin=cfg.SPEC_FMIN, fmax=cfg.SPEC_FMAX,
-        cmap="viridis", vmin=-80, vmax=0, ax=ax,
-    )
-    cbar = fig.colorbar(img_plot, ax=ax, format="%+.0f dB", pad=0.01)
-    cbar.set_label("dB", rotation=270, labelpad=12, fontsize=9)
-    cbar.ax.tick_params(labelsize=8)
-    ax.set_xlabel("Time (s)", fontsize=9)
-    ax.set_ylabel("Hz", fontsize=9)
-    ax.tick_params(axis="both", labelsize=8)
-    plt.tight_layout(pad=0.4)
+    # Map [-80, 0] → [0, 255] linearly
+    # 0 dB (loudest) → 255 (white), -80 dB (silence) → 0 (black)
+    img_arr = ((log_mel + 80.0) / 80.0 * 255.0).clip(0, 255).astype(np.uint8)
 
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png", dpi=110, bbox_inches="tight")
-    plt.close(fig)
-    buf.seek(0)
+    # img_arr shape is (n_mels=128, T) — PIL expects (height, width)
+    # Low frequencies are at row 0; flip vertically so low freqs are at bottom
+    # (consistent with standard spectrogram orientation)
+    img_arr = np.flipud(img_arr)
 
-    pil_img = Image.open(buf).convert("RGB")
-    pil_img = pil_img.resize((1000, 400), Image.LANCZOS)
-    pil_img.save(str(out_path))
+    Image.fromarray(img_arr, mode="L").save(str(out_path))
 
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--limit",         type=int,  default=None)
-    p.add_argument("--skip_existing", action="store_true")
+    p = argparse.ArgumentParser(
+        description="Generate clean grayscale mel spectrogram PNGs for training"
+    )
+    p.add_argument("--limit",         type=int,  default=None,
+                   help="Process only the first N files (for testing)")
+    p.add_argument("--skip_existing", action="store_true",
+                   help="Skip files that already have a PNG")
     args = p.parse_args()
 
     cfg.print_config()
 
     # ── Dependency check ─────────────────────────────────────────────────
     missing = []
-    for pkg in ["librosa", "matplotlib", "PIL"]:
+    for pkg in ["librosa", "PIL"]:
         try:
             __import__(pkg)
         except ImportError:
@@ -87,7 +87,7 @@ def main():
         print(f"\n✗ Missing packages: {missing}")
         print(f"  Run: pip install {' '.join(missing)}")
         sys.exit(1)
-    print("Dependencies: librosa ✓  matplotlib ✓  PIL ✓")
+    print("Dependencies: librosa ✓  PIL ✓")
 
     # ── Locate WAV files ─────────────────────────────────────────────────
     if not cfg.WAV_DIR.exists():
@@ -108,15 +108,28 @@ def main():
     # ── Create output dir ────────────────────────────────────────────────
     cfg.SPEC_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Output dir : {cfg.SPEC_DIR}  (exists={cfg.SPEC_DIR.exists()})")
+    print(f"Format     : grayscale PNG, {cfg.SPEC_N_MELS} mel bins × T frames")
+    print(f"             (no axes/labels — clean acoustic content only)")
     print(f"Generating {len(wav_files)} spectrograms ...\n")
 
     # ── Test first file immediately ──────────────────────────────────────
+    import numpy as np
+    from PIL import Image
+
     test_wav = wav_files[0]
     test_out = cfg.SPEC_DIR / (test_wav.stem + ".png")
     print(f"[TEST] First file: {test_wav.name} → {test_out.name}", flush=True)
     try:
         wav_to_png(test_wav, test_out)
-        print(f"[TEST] ✓ Saved  size={test_out.stat().st_size} bytes\n")
+        img = Image.open(test_out)
+        arr = np.array(img)
+        print(f"[TEST] ✓  size={test_out.stat().st_size} bytes | "
+              f"shape={arr.shape} | mode={img.mode} | "
+              f"pixel range=[{arr.min()}, {arr.max()}]\n")
+        assert img.mode == "L",          f"Expected grayscale, got {img.mode}"
+        assert arr.shape[0] == cfg.SPEC_N_MELS, \
+            f"Expected {cfg.SPEC_N_MELS} rows, got {arr.shape[0]}"
+        assert arr.max() > 0,            "Silent clip — all-zero image"
     except Exception:
         print(f"[TEST] ✗ FAILED")
         traceback.print_exc()
@@ -124,7 +137,7 @@ def main():
 
     # ── Process remaining files ──────────────────────────────────────────
     from tqdm import tqdm
-    generated = 1   # first file already done
+    generated = 1
     skipped   = 0
     failed    = 0
 
@@ -145,7 +158,8 @@ def main():
     print(f"Generated : {generated}")
     print(f"Skipped   : {skipped}")
     print(f"Failed    : {failed}")
-    print(f"\nNext: python scripts/train_transformer_audio.py")
+    print(f"\nSpectrograms saved to {cfg.SPEC_DIR}")
+    print(f"Next: python scripts/train_transformer_audio.py")
 
 
 if __name__ == "__main__":

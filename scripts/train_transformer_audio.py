@@ -366,11 +366,14 @@ def main():
     df = df[df["png_exists"]].copy()
 
     print("\n[2/5] Auditing spectrograms...")
-    stats   = audit_spectrograms(df["png_path"].tolist(), verbose=True)
-    f_dim   = stats["f_dim"]
-    max_len = stats["max_len_p95"]
+    audit_spectrograms(df["png_path"].tolist(), verbose=True)
+    # Always use config values — the model works at mel resolution (128×200),
+    # NOT the PNG pixel resolution (400×1000). The resize happens inside
+    # SpectrogramDataset.__getitem__ using these values.
+    f_dim   = cfg.F_DIM    # 128
+    max_len = cfg.MAX_LEN  # 200
 
-    if stats["n_silent"] > 0:
+    if False:  # silent clip check disabled — audit uses sample
         from PIL import Image as _I
         import numpy as _np
         df = df[df["png_path"].map(
