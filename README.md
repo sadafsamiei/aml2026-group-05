@@ -206,7 +206,6 @@ Training curves :
 | Δ vs chance | +0.017 |
 | Val→Test gap | −0.002 ✓ |
 | Epochs trained | 56 |
-| Training time | 324 s |
 
 Per-class test F1:
 
@@ -234,7 +233,6 @@ Training curves :
 | Val→Test gap | +0.055 |
 | Query mode | external_meta (age + gender) |
 | Epochs trained | 43 |
-| Training time | 245 s |
 
 Per-class test F1:
 
