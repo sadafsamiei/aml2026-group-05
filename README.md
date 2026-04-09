@@ -195,9 +195,9 @@ Val: child_2 (n=171), Test: child_6 (n=269). Chance = 0.25 (4 classes).
 
 ### Model 2 — Audio-only Transformer (mean pooling)
 
-Training curves — `figures/training_curves_single_fold0_20260409_222231.png`:
+Training curves :
 
-![Model 2 training curves](figures/training_curves_single_fold0_20260409_222231.png)
+![Model 2 training curves](figures/training_curves_attn_single_fold0_20260409_220310.png)
 
 | Metric | Value |
 |---|---|
@@ -221,7 +221,7 @@ Per-class test F1:
 
 ### Model 3 — Attentive Pooling Transformer (external metadata)
 
-Training curves — `figures/training_curves_attn_single_fold0_20260409_222937.png`:
+Training curves :
 
 ![Model 3 training curves](figures/training_curves_attn_single_fold0_20260409_222937.png)
 
