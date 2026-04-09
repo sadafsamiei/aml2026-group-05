@@ -31,7 +31,7 @@ RES_DIR  = Path("/home/renku/work/data")
 # Input paths  (derived from DATA_DIR — READ ONLY)
 # ---------------------------------------------------------------------------
 WAV_DIR      = DATA_DIR / "anonymized_audios"     # audio_0000.wav … audio_1008.wav
-CONTEXTS_CSV = DATA_DIR / "contextsvocs_groupproject_2026-04-07_133933.csv"
+CONTEXTS_CSV = DATA_DIR / "contextsvocs_groupproject_2026-04-09_104847.csv"
 
 # ---------------------------------------------------------------------------
 # Output paths  (derived from RES_DIR — READ/WRITE, synced to SwitchDrive)
@@ -43,17 +43,13 @@ RESULTS_DIR = RES_DIR / "results"
 FIGURES_DIR = RES_DIR / "figures"
 
 # ---------------------------------------------------------------------------
-# Label mapping  (2026 dataset labels → 4 coarse classes)
-#
-# PLTOY ← PLAY1, PLAY+, TOYMO
-# MOVE  ← WALK, CARRIED, ARRIVES, LEAVES, FALLS
-# INTER ← CONV, OBSERV_INTER, SEEK_INTER, GROOMED, AGGR
-# EXTEV ← FOOD, REST, SLE
+# Label mapping  (labels already in 4-class format — no mapping needed)
+# context_label column contains: EXTEV, INTER, MOVE, PLTOY directly
 # ---------------------------------------------------------------------------
-PLTOY_LABELS = {"PLAY1", "PLAY+", "TOYMO"}
-MOVE_LABELS  = {"WALK", "CARRIED", "ARRIVES", "LEAVES", "FALLS"}
-INTER_LABELS = {"CONV", "OBSERV_INTER", "SEEK_INTER", "GROOMED", "AGGR"}
-EXTEV_LABELS = {"FOOD", "REST", "SLE"}
+PLTOY_LABELS = {"PLTOY"}
+MOVE_LABELS  = {"MOVE"}
+INTER_LABELS = {"INTER"}
+EXTEV_LABELS = {"EXTEV"}
 
 CLASS_NAMES   = ["EXTEV", "INTER", "MOVE", "PLTOY"]
 LABEL_ENCODER = {c: i for i, c in enumerate(CLASS_NAMES)}
@@ -78,9 +74,9 @@ SPEC_FMAX  = 8000    # max frequency (Hz)
 # ---------------------------------------------------------------------------
 # Sequence constants (set here; verified at runtime by audit_spectrograms)
 # ---------------------------------------------------------------------------
-F_DIM   = 400    # image height after resize (OUT_HEIGHT in generate_spectrograms.py)
-MAX_LEN = 1000   # image width after resize  (OUT_WIDTH  in generate_spectrograms.py)
-                 # All images are the same size → padding_mask is always all-False
+F_DIM   = 128    # mel frequency bins (actual audio resolution, not image size)
+MAX_LEN = 200    # time frame cap (p95 of actual frame counts before resizing)
+                 # The 1000×400 viridis PNGs are resized to MAX_LEN×F_DIM inside load_png()
 
 # ---------------------------------------------------------------------------
 # Hyperparameter presets
@@ -144,5 +140,5 @@ def print_config():
     print(f"Classes       : {CLASS_NAMES}")
     print(f"Lang filter   : {LANG_FILTER!r}  (None = all languages)")
     print(f"Active preset : {preset}")
-    print(f"F_DIM / MAX_LEN : {F_DIM} / {MAX_LEN}  (fixed image size: {MAX_LEN}×{F_DIM})")
+    print(f"F_DIM / MAX_LEN : {F_DIM} / {MAX_LEN}  (training PNG: {MAX_LEN}×{F_DIM} px, grayscale)")
     print("=" * 62)
