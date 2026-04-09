@@ -36,7 +36,7 @@ Labels are provided directly in the dataset CSV in 4-class format — no mapping
 
 | Property | Value |
 |---|---|
-| Total clips | 1009 (1008 usable — 1 WAV missing) |
+| Total clips | 1009 |
 | Class distribution | INTER=325, PLTOY=240, EXTEV=222, MOVE=222 |
 | Children | 9 (child_1 … child_9) |
 | Languages | Shipibo (313), Tagalog (414), Vietnamese (282) |
@@ -67,14 +67,14 @@ validation macro-F1.
 ### Model 2 — Audio-only Transformer
 Transformer encoder over spectrogram frames → masked mean pooling → classifier.
 Architecture: `input_proj(128→64) + TransformerEncoder(d=64, heads=4, L=2) +
-mean_pool + Linear(64→4)`. 124,484 parameters.
+mean_pool + Linear(64→4)`. 126,404 parameters.
 
 ### Model 3 — Attentive Pooling Transformer
 Same encoder as Model 2 but replaces mean pooling with metadata-query attentive
 pooling. Age and gender are projected to a query vector that attends over
-frame-level representations. Query mode is determined automatically at runtime:
-- **External metadata** (current, 9 participants): `USE_EXTERNAL_META = True`
-- **Learned query** (fallback, fewer participants or collinear metadata)
+frame-level representations. Query mode: **external metadata**
+(`USE_EXTERNAL_META = True` — 9 participants, age/gender not collinear with identity).
+126,724 parameters.
 
 ---
 
@@ -85,15 +85,13 @@ With 9 participants the pipeline uses **participant-disjoint holdout**:
 | Split | Child | N |
 |---|---|---|
 | Test | child_6 | 269 |
-| Val | child_2 | 170 |
+| Val | child_2 | 171 |
 | Train | child_1, 3, 4, 5, 7, 8, 9 | 569 |
 
 Children are assigned by size so the two largest (most class-balanced) go to
 test and val. Leakage checks verify no participant appears in multiple splits.
 
-**Metric**: macro-F1 (unweighted mean of per-class F1 scores). Used instead of
-accuracy because macro-F1 equally penalises poor recall on any class including
-minorities. **Chance level = 0.25** (4 classes, uniform).
+**Metric**: macro-F1 (unweighted mean of per-class F1 scores). Chance level = **0.25** (4 classes).
 
 ---
 
@@ -107,7 +105,7 @@ aml2026-group-05/
 │   ├── models.py          ← AudioTransformer + AttentivePoolingTransformer
 │   └── train_utils.py     ← training loop, evaluation, sanity checks
 └── scripts/
-    ├── generate_spectrograms.py   ← generate grayscale PNGs from WAV files
+    ├── generate_spectrograms.py   ← generate grayscale PNGs from denoised WAVs
     ├── train_transformer_audio.py ← Model 2 entry point
     ├── train_transformer_attn.py  ← Model 3 entry point
     └── train_lr_baseline.py       ← Model 1 entry point (not yet built)
@@ -122,8 +120,8 @@ DATA_DIR = /home/renku/work/aml-project/training_data/   ← READ ONLY
   └── MFCC_Full_Raw_20_nico_.csv  ← MFCC features, 20 coefficients (for Model 1)
 
 RES_DIR = /home/renku/work/data/   ← READ/WRITE
-  ├── spectrograms/   ← 1008 grayscale PNGs, 128×T px (generated from denoised audio)
-  ├── splits/         ← train.csv, val.csv, test.csv
+  ├── spectrograms/   ← 1009 grayscale PNGs, 128×T px (from denoised audio)
+  ├── splits/         ← train.csv (n=569), val.csv (n=171), test.csv (n=269)
   ├── models/         ← checkpoints (.pt)
   ├── results/        ← JSON metrics
   └── figures/        ← training curves + confusion matrices
@@ -148,26 +146,26 @@ python scripts/generate_spectrograms.py
 python scripts/generate_spectrograms.py --skip_existing  # safe re-run
 ```
 
-Produces clean grayscale mel spectrogram PNGs (128 mel bins × T frames, no axes).
-The model loads these and resizes to **F_DIM=128 × MAX_LEN=200** inside
+Produces clean grayscale mel spectrogram PNGs (128 mel bins × T frames, no axes,
+no labels). The model loads these and resizes to F_DIM=128 × MAX_LEN=230 inside
 `SpectrogramDataset.__getitem__`. Confirm the DataLoader sanity line shows:
 ```
-Batch: x=torch.Size([32, 200, 128])   ← correct
+Batch: x=torch.Size([32, 230, 128])   ← correct
 ```
 
 ### Step 1 — Train Model 2
 
 ```bash
-python scripts/train_transformer_audio.py
+python scripts/train_transformer_audio.py                   # first run — builds splits
 python scripts/train_transformer_audio.py --use_existing_splits  # reuse splits
-python scripts/train_transformer_audio.py --grid_search           # grid search
+python scripts/train_transformer_audio.py --grid_search          # hyperparameter search
 ```
 
 ### Step 2 — Train Model 3
 
 ```bash
 python scripts/train_transformer_attn.py \
-    --baseline_test_f1 0.248 \
+    --baseline_test_f1 0.267 \
     --use_existing_splits
 ```
 
@@ -177,7 +175,7 @@ python scripts/train_transformer_attn.py \
 python scripts/train_lr_baseline.py
 ```
 
-Uses `MFCC_Full_Raw_20_nico_.csv`. Same holdout splits as Models 2 and 3.
+Uses `MFCC_Full_Raw_20_nico_.csv` with the same holdout splits as Models 2 and 3.
 
 ---
 
@@ -192,74 +190,122 @@ Uses `MFCC_Full_Raw_20_nico_.csv`. Same holdout splits as Models 2 and 3.
 
 ## Current Results
 
-Protocol: **participant-disjoint holdout** (Train=7 children n=569,
-Val=child_2 n=170, Test=child_6 n=269). Chance level = 0.25 (4 classes).
+**Protocol**: participant-disjoint holdout — Train: 7 children (n=569),
+Val: child_2 (n=171), Test: child_6 (n=269). Chance = 0.25 (4 classes).
 
-| Model | Val macro-F1 | Test macro-F1 | Δ vs chance |
+### Model 2 — Audio-only Transformer (mean pooling)
+
+Training curves — `figures/training_curves_single_fold0_20260409_222231.png`:
+
+![Model 2 training curves](figures/training_curves_single_fold0_20260409_222231.png)
+
+| Metric | Value |
+|---|---|
+| Val macro-F1 | 0.265 |
+| **Test macro-F1** | **0.267** |
+| Δ vs chance | +0.017 |
+| Val→Test gap | −0.002 ✓ |
+| Epochs trained | 56 |
+| Training time | 324 s |
+
+Per-class test F1:
+
+| Class | Precision | Recall | F1 |
 |---|---|---|---|
-| 1 — Logistic Regression | TBD | TBD | TBD |
-| 2 — Audio Transformer (mean pool) | 0.267 | **0.248** | −0.002 |
-| 3 — Attentive Pooling (ext. meta) | 0.275 | **0.186** | −0.064 |
+| EXTEV | 0.160 | 0.080 | 0.107 |
+| INTER | 0.306 | 0.519 | **0.385** |
+| MOVE | 0.276 | 0.447 | **0.341** |
+| PLTOY | 0.441 | 0.161 | 0.236 |
 
-### Per-class test F1
+---
 
-| Class | Model 2 | Model 3 |
-|---|---|---|
-| EXTEV | 0.065 | 0.000 |
-| INTER | 0.374 | 0.403 |
-| MOVE | 0.317 | 0.156 |
-| PLTOY | 0.236 | 0.186 |
+### Model 3 — Attentive Pooling Transformer (external metadata)
 
-### Interpretation
+Training curves — `figures/training_curves_attn_single_fold0_20260409_222937.png`:
 
-Both models perform near or below the 0.25 chance level on the test set.
-This is expected and honest given the experimental conditions:
+![Model 3 training curves](figures/training_curves_attn_single_fold0_20260409_222937.png)
 
-**Why results are near chance:**
-- **Cross-participant generalisation is hard.** The model trains on 7 children
-  and is tested on a completely unseen child (child_6). Each child has a unique
-  acoustic profile; with 569 training examples a Transformer cannot reliably
-  learn context-discriminative features that transfer across speakers.
-- **Overfitting is clearly visible** in both training curves: train loss drops to
-  ~0.3 while validation F1 plateaus below 0.28. The model memorises training
-  children rather than learning generalisable context cues.
-- **EXTEV is the hardest class** — 0 recall in Model 3's test. child_6 has 50
-  EXTEV examples but training set distribution is INTER-heavy, so the model
-  rarely predicts EXTEV on unseen speakers.
+| Metric | Value |
+|---|---|
+| Val macro-F1 | 0.295 |
+| **Test macro-F1** | **0.240** |
+| Δ vs chance | −0.010 |
+| Δ vs Model 2 | −0.027 |
+| Val→Test gap | +0.055 |
+| Query mode | external_meta (age + gender) |
+| Epochs trained | 43 |
+| Training time | 245 s |
 
-**Why Model 3 does not beat Model 2:**
-The attention weight statistics show `mean_weight_std = 0.00084` vs
-`uniform_proxy = 0.00707` — weights are nearly uniform across all time frames,
-meaning the metadata query has not learned to focus on discriminative regions.
-With 569 training examples the attention parameters do not receive enough
-gradient signal to develop meaningful frame preferences. The −0.062 delta
-vs Model 2 is within noise at this dataset size and should not be
-over-interpreted as a fundamental failure of the architecture.
+Per-class test F1:
 
-These results reflect the **expected difficulty of zero-shot cross-participant
-generalisation** in an under-resourced language setting, not a pipeline failure.
+| Class | Precision | Recall | F1 |
+|---|---|---|---|
+| EXTEV | 0.269 | 0.140 | **0.184** |
+| INTER | 0.321 | 0.316 | 0.318 |
+| MOVE | 0.200 | 0.574 | 0.297 |
+| PLTOY | 0.333 | 0.108 | 0.163 |
+
+---
+
+### Head-to-head comparison
+
+| Model | Val F1 | Test F1 | Δ vs chance | Best class |
+|---|---|---|---|---|
+| 1 — Logistic Regression | TBD | TBD | TBD | TBD |
+| 2 — Audio Transformer | 0.265 | **0.267** | +0.017 | INTER (0.385) |
+| 3 — Attentive Pooling | 0.295 | 0.240 | −0.010 | INTER (0.318) |
+
+---
+
+## Interpretation
+
+**Model 2 marginally beats Model 3** (0.267 vs 0.240 test macro-F1). Both are
+near the 0.25 chance level, which is the expected outcome of cross-participant
+generalisation with 569 training examples.
+
+**Why Model 3 does not beat Model 2:** The attention weight statistics confirm
+the metadata query produces nearly uniform weights (`mean_weight_std = 0.00086`
+vs `uniform_proxy = 0.00659`). The query has not learned to focus on
+discriminative temporal regions. With 569 training examples distributed across
+4 classes and 9 acoustic profiles, the attention parameters receive insufficient
+gradient signal to develop meaningful frame preferences. The −0.027 delta is
+within noise and should not be interpreted as a fundamental failure of the
+architecture — it reflects the data-limited setting.
+
+**Why results are near chance:** The task is cross-participant generalisation
+in an under-resourced language setting. The model trains on 7 children and is
+tested on one completely unseen child (child_6). Each child has a unique acoustic
+profile and recording environment. Both training curves show classic overfitting:
+train loss drops to ~0.05–0.15 while validation F1 plateaus near 0.25–0.30. The
+model memorises training children rather than learning generalisable context cues.
+This is an expected and honest outcome given the experimental constraints.
+
+**EXTEV is the hardest class** (F1 = 0.107 in Model 2, 0.184 in Model 3).
+It is the most acoustically ambiguous category — external events are defined
+by what is happening around the child rather than the child's own vocalisation
+pattern.
 
 ---
 
 ## Key Design Decisions
 
 **Participant-disjoint evaluation** — prevents the model exploiting
-speaker-specific acoustic cues instead of context-specific ones. Children
-are assigned to splits once, never moved.
+speaker-specific acoustic cues. Children are assigned to splits once and
+never moved.
 
-**Macro-F1 metric** — rewards balanced performance across all four classes.
-Accuracy would be misleading; predicting INTER on every example would give
-~30% accuracy but zero utility.
+**Macro-F1 metric** — equally penalises poor recall on any class. Accuracy
+would be misleading as predicting INTER on every example gives ~30% accuracy
+but near-zero utility.
 
 **No child ID as feature** — direct identity creates leakage in
 participant-disjoint evaluation and violates participant privacy. Age and
 gender are used instead, verified non-collinear with identity.
 
-**Grayscale spectrograms from denoised audio** — clean acoustic content only,
-no axes or colorbar pixels. Generated at native mel resolution (128 mel bins × T
-frames) and resized to 128×200 inside the dataset. Denoising reduces background
-noise in the recordings before feature extraction.
+**Grayscale spectrograms from denoised audio** — clean acoustic content only
+(no axes or colorbar pixels). Generated at native mel resolution (128 mel bins
+× T frames) and resized to 128×230 inside the dataset. Denoising reduces
+background noise before feature extraction.
 
-**F_DIM=128, MAX_LEN=200** — the model processes 128 mel bins × 200 time frames,
-matching actual acoustic resolution. Attention cost is O(200²) = 40,000 pairs
-per layer — 25× cheaper than reading full 1000×400 images.
+**F_DIM=128, MAX_LEN=230** — the model processes 128 mel bins × 230 time frames,
+matching actual acoustic resolution. Attention cost is O(230²) = 52,900 pairs
+per layer — significantly cheaper than reading full 1000×400 images.
