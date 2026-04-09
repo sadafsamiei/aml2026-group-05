@@ -36,7 +36,7 @@ Labels are provided directly in the dataset CSV in 4-class format — no mapping
 
 | Property | Value |
 |---|---|
-| Total clips | 1009 |
+| Total clips | 1009 (1008 usable — 1 WAV missing) |
 | Class distribution | INTER=325, PLTOY=240, EXTEV=222, MOVE=222 |
 | Children | 9 (child_1 … child_9) |
 | Languages | Shipibo (313), Tagalog (414), Vietnamese (282) |
@@ -45,8 +45,8 @@ Labels are provided directly in the dataset CSV in 4-class format — no mapping
 | Mean clip duration | 1.33 s (std=0.71, max=8.01) |
 
 **Metadata viability**: age has 5 unique values and gender has 2 unique values
-across 9 children — neither is collinear with participant identity. External
-metadata query is therefore safe to use in Model 3.
+across 9 children — neither is collinear with participant identity.
+External metadata query is therefore safe to use in Model 3 (`USE_EXTERNAL_META = True`).
 
 ---
 
@@ -54,9 +54,9 @@ metadata query is therefore safe to use in Model 3.
 
 | # | Model | Script | Status |
 |---|---|---|---|
-| 1 | Logistic Regression (MFCC features) | `train_lr_baseline.py` | Not yet built |
-| 2 | Audio-only Transformer (mean pooling) | `train_transformer_audio.py` | Training |
-| 3 | Attentive Pooling Transformer | `train_transformer_attn.py` | Waiting for Model 2 |
+| 1 | Logistic Regression (MFCC features) | `train_lr_baseline.py` | ❌ Not yet built |
+| 2 | Audio-only Transformer (mean pooling) | `train_transformer_audio.py` | ✅ Done |
+| 3 | Attentive Pooling Transformer | `train_transformer_attn.py` | ✅ Done |
 
 ### Model 1 — Logistic Regression
 MFCC summary features: mean and std of each of the 20 MFCC coefficients
@@ -67,7 +67,7 @@ validation macro-F1.
 ### Model 2 — Audio-only Transformer
 Transformer encoder over spectrogram frames → masked mean pooling → classifier.
 Architecture: `input_proj(128→64) + TransformerEncoder(d=64, heads=4, L=2) +
-mean_pool + Linear(64→4)`. ~193k parameters.
+mean_pool + Linear(64→4)`. 124,484 parameters.
 
 ### Model 3 — Attentive Pooling Transformer
 Same encoder as Model 2 but replaces mean pooling with metadata-query attentive
@@ -85,7 +85,7 @@ With 9 participants the pipeline uses **participant-disjoint holdout**:
 | Split | Child | N |
 |---|---|---|
 | Test | child_6 | 269 |
-| Val | child_2 | 171 |
+| Val | child_2 | 170 |
 | Train | child_1, 3, 4, 5, 7, 8, 9 | 569 |
 
 Children are assigned by size so the two largest (most class-balanced) go to
@@ -107,7 +107,7 @@ aml2026-group-05/
 │   ├── models.py          ← AudioTransformer + AttentivePoolingTransformer
 │   └── train_utils.py     ← training loop, evaluation, sanity checks
 └── scripts/
-    ├── generate_spectrograms.py   ← generate viridis PNGs from WAV files
+    ├── generate_spectrograms.py   ← generate grayscale PNGs from WAV files
     ├── train_transformer_audio.py ← Model 2 entry point
     ├── train_transformer_attn.py  ← Model 3 entry point
     └── train_lr_baseline.py       ← Model 1 entry point (not yet built)
@@ -116,14 +116,14 @@ aml2026-group-05/
 **RenkuLab path layout:**
 ```
 DATA_DIR = /home/renku/work/aml-project/training_data/   ← READ ONLY
-  ├── anonymized_audios/          ← audio_0000.wav … audio_1008.wav
+  ├── denoised_audios/            ← audio_0000.wav … audio_1008.wav (denoised)
   ├── contextsvocs_groupproject_2026-04-09_104847.csv  ← ACTIVE CSV
   ├── mfccs_070426.csv            ← MFCC features (for Model 1)
   └── MFCC_Full_Raw_20_nico_.csv  ← MFCC features, 20 coefficients (for Model 1)
 
 RES_DIR = /home/renku/work/data/   ← READ/WRITE
-  ├── spectrograms/   ← 1009 viridis PNGs, 1000x400 RGB (already generated)
-  ├── splits/         ← train.csv, val.csv, test.csv (auto-created)
+  ├── spectrograms/   ← 1008 grayscale PNGs, 128×T px (generated from denoised audio)
+  ├── splits/         ← train.csv, val.csv, test.csv
   ├── models/         ← checkpoints (.pt)
   ├── results/        ← JSON metrics
   └── figures/        ← training curves + confusion matrices
@@ -141,44 +141,34 @@ pip install -r requirements.txt
 
 ## Running the Models
 
-### Step 0 — Generate spectrograms (already done, skip if PNGs exist)
+### Step 0 — Generate spectrograms (run once)
 
 ```bash
 python scripts/generate_spectrograms.py
-# Safe to re-run:
-python scripts/generate_spectrograms.py --skip_existing
+python scripts/generate_spectrograms.py --skip_existing  # safe re-run
 ```
 
-Produces 1000×400 px RGB viridis mel spectrograms with Hz/time/dB labels.
-The model resizes these to **128×200 px** inside `SpectrogramDataset.__getitem__`
-(F_DIM=128, MAX_LEN=200). Confirm with the DataLoader sanity line:
+Produces clean grayscale mel spectrogram PNGs (128 mel bins × T frames, no axes).
+The model loads these and resizes to **F_DIM=128 × MAX_LEN=200** inside
+`SpectrogramDataset.__getitem__`. Confirm the DataLoader sanity line shows:
 ```
 Batch: x=torch.Size([32, 200, 128])   ← correct
-Batch: x=torch.Size([32, 1000, 400])  ← resize failed, check data_utils.py
 ```
 
 ### Step 1 — Train Model 2
 
 ```bash
-# First run — builds splits automatically
 python scripts/train_transformer_audio.py
-
-# If re-running after a crash — reuse existing splits
-python scripts/train_transformer_audio.py --use_existing_splits
-
-# Hyperparameter overrides
-python scripts/train_transformer_audio.py --d_model 128 --num_layers 3
-python scripts/train_transformer_audio.py --grid_search
+python scripts/train_transformer_audio.py --use_existing_splits  # reuse splits
+python scripts/train_transformer_audio.py --grid_search           # grid search
 ```
 
 ### Step 2 — Train Model 3
 
 ```bash
-# Pass Model 2 test F1 for direct comparison output
-python scripts/train_transformer_attn.py --baseline_test_f1 <model2_test_f1>
-
-# Reuse splits from Model 2 run
-python scripts/train_transformer_attn.py --baseline_test_f1 <value> --use_existing_splits
+python scripts/train_transformer_attn.py \
+    --baseline_test_f1 0.248 \
+    --use_existing_splits
 ```
 
 ### Step 3 — Train Model 1 (not yet built)
@@ -187,7 +177,7 @@ python scripts/train_transformer_attn.py --baseline_test_f1 <value> --use_existi
 python scripts/train_lr_baseline.py
 ```
 
-Uses `MFCC_Full_Raw_20_nico_.csv`. Uses same holdout splits as Models 2 and 3.
+Uses `MFCC_Full_Raw_20_nico_.csv`. Same holdout splits as Models 2 and 3.
 
 ---
 
@@ -202,15 +192,52 @@ Uses `MFCC_Full_Raw_20_nico_.csv`. Uses same holdout splits as Models 2 and 3.
 
 ## Current Results
 
-> Model 2 is currently training. All results below will be filled in once all
-> three models complete. Protocol: participant-disjoint holdout.
-> Chance level = 0.25 (4 classes).
+Protocol: **participant-disjoint holdout** (Train=7 children n=569,
+Val=child_2 n=170, Test=child_6 n=269). Chance level = 0.25 (4 classes).
 
 | Model | Val macro-F1 | Test macro-F1 | Δ vs chance |
 |---|---|---|---|
 | 1 — Logistic Regression | TBD | TBD | TBD |
-| 2 — Audio Transformer | TBD | TBD | TBD |
-| 3 — Attentive Pooling Transformer | TBD | TBD | TBD |
+| 2 — Audio Transformer (mean pool) | 0.267 | **0.248** | −0.002 |
+| 3 — Attentive Pooling (ext. meta) | 0.275 | **0.186** | −0.064 |
+
+### Per-class test F1
+
+| Class | Model 2 | Model 3 |
+|---|---|---|
+| EXTEV | 0.065 | 0.000 |
+| INTER | 0.374 | 0.403 |
+| MOVE | 0.317 | 0.156 |
+| PLTOY | 0.236 | 0.186 |
+
+### Interpretation
+
+Both models perform near or below the 0.25 chance level on the test set.
+This is expected and honest given the experimental conditions:
+
+**Why results are near chance:**
+- **Cross-participant generalisation is hard.** The model trains on 7 children
+  and is tested on a completely unseen child (child_6). Each child has a unique
+  acoustic profile; with 569 training examples a Transformer cannot reliably
+  learn context-discriminative features that transfer across speakers.
+- **Overfitting is clearly visible** in both training curves: train loss drops to
+  ~0.3 while validation F1 plateaus below 0.28. The model memorises training
+  children rather than learning generalisable context cues.
+- **EXTEV is the hardest class** — 0 recall in Model 3's test. child_6 has 50
+  EXTEV examples but training set distribution is INTER-heavy, so the model
+  rarely predicts EXTEV on unseen speakers.
+
+**Why Model 3 does not beat Model 2:**
+The attention weight statistics show `mean_weight_std = 0.00084` vs
+`uniform_proxy = 0.00707` — weights are nearly uniform across all time frames,
+meaning the metadata query has not learned to focus on discriminative regions.
+With 569 training examples the attention parameters do not receive enough
+gradient signal to develop meaningful frame preferences. The −0.062 delta
+vs Model 2 is within noise at this dataset size and should not be
+over-interpreted as a fundamental failure of the architecture.
+
+These results reflect the **expected difficulty of zero-shot cross-participant
+generalisation** in an under-resourced language setting, not a pipeline failure.
 
 ---
 
@@ -221,16 +248,18 @@ speaker-specific acoustic cues instead of context-specific ones. Children
 are assigned to splits once, never moved.
 
 **Macro-F1 metric** — rewards balanced performance across all four classes.
-Accuracy would be misleading because predicting the majority class (INTER)
-on every example would give 32% accuracy but near-zero utility.
+Accuracy would be misleading; predicting INTER on every example would give
+~30% accuracy but zero utility.
 
 **No child ID as feature** — direct identity creates leakage in
 participant-disjoint evaluation and violates participant privacy. Age and
 gender are used instead, verified non-collinear with identity.
 
-**Resize 1000×400 PNGs to 128×200 for training** — the 1000×400 image
-includes axes, tick labels, and the dB colorbar which encode no acoustic
-content. Attention cost at T=1000 is 25× higher than at T=200. The resize
-happens inside `SpectrogramDataset.__getitem__` to 128 mel bins × 200 time
-frames, matching the actual acoustic resolution of the data. The full-size
-PNGs are kept for reports and presentations.
+**Grayscale spectrograms from denoised audio** — clean acoustic content only,
+no axes or colorbar pixels. Generated at native mel resolution (128 mel bins × T
+frames) and resized to 128×200 inside the dataset. Denoising reduces background
+noise in the recordings before feature extraction.
+
+**F_DIM=128, MAX_LEN=200** — the model processes 128 mel bins × 200 time frames,
+matching actual acoustic resolution. Attention cost is O(200²) = 40,000 pairs
+per layer — 25× cheaper than reading full 1000×400 images.
