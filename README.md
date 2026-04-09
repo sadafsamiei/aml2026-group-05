@@ -32,8 +32,6 @@ Labels are provided directly in the dataset CSV in 4-class format — no mapping
 
 ## Dataset
 
-**Active CSV**: `contextsvocs_groupproject_2026-04-09_104847.csv`
-
 | Property | Value |
 |---|---|
 | Total clips | 1009 |
@@ -171,7 +169,7 @@ python scripts/train_transformer_attn.py \
 python scripts/train_lr_baseline.py
 ```
 
-Uses `MFCC_Full_Raw_20_nico_.csv` with the same holdout splits as Models 2 and 3.
+Uses the same holdout splits as Models 2 and 3.
 
 ---
 
@@ -179,7 +177,7 @@ Uses `MFCC_Full_Raw_20_nico_.csv` with the same holdout splits as Models 2 and 3
 
 | Preset | d_model | layers | batch | When to use |
 |---|---|---|---|---|
-| `full` *(default)* | 64 | 2 | 32 | 300+ training examples — current |
+| `full` | 64 | 2 | 32 | 300+ training examples — current |
 
 ---
 
