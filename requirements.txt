@@ -4,110 +4,74 @@
 # Python >= 3.10 required
 # =============================================================================
 #
-# INSTALLATION
-# ------------
-# Standard (CPU-only, recommended for development):
-#   pip install -r requirements.txt
+# GPU NOTE (Renkulab / CUDA 12.4 driver)
+# --------------------------------------
+# We pin torch to a CUDA 12.1 build (+cu121). These wheels run on any NVIDIA
+# driver >= 525, including the 550.x driver on Renkulab's A10 nodes.
+# Do NOT remove the --extra-index-url line below — without it, pip will pull
+# the default PyPI wheel, which on recent releases is built for CUDA 13.0
+# and will silently fall back to CPU on a 12.4 driver.
 #
-# GPU (CUDA 12.1) — replace the torch/torchvision lines or install separately:
-#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-#   pip install -r requirements.txt --ignore-installed torch torchvision
-#
-# Apple Silicon (MPS backend):
-#   pip install -r requirements.txt
-#   (MPS is included in the standard macOS PyTorch wheel; no extra index needed)
-#
+# CPU-only install (e.g. local laptop without NVIDIA GPU):
+#   Replace the index URL below with:
+#       --extra-index-url https://download.pytorch.org/whl/cpu
+#   and change "+cu121" to "+cpu" on the torch / torchvision lines.
 # =============================================================================
+
+--extra-index-url https://download.pytorch.org/whl/cu121
 
 
 # -----------------------------------------------------------------------------
 # Core numeric / data
 # -----------------------------------------------------------------------------
-numpy>=1.26,<3.0          # array operations; 2.x API is stable and faster
-pandas>=2.1,<4.0          # master table, split CSVs, label mapping
-scipy>=1.11               # used by scikit-learn internally; good to pin
+numpy>=1.26,<3.0
+pandas>=2.1,<4.0
+scipy>=1.11
 
 
 # -----------------------------------------------------------------------------
 # Machine learning — baseline model
 # -----------------------------------------------------------------------------
-scikit-learn>=1.4         # LogisticRegression, StratifiedKFold,
-                          # StandardScaler, f1_score, classification_report,
-                          # ConfusionMatrixDisplay, train_test_split
+scikit-learn>=1.4
 
 
 # -----------------------------------------------------------------------------
-# Deep learning — Transformer models
-# Note: for GPU builds, install torch/torchvision separately (see header above)
+# Deep learning — Transformer models (CUDA 12.1 build)
 # -----------------------------------------------------------------------------
-torch>=2.0,<3.0           # TransformerEncoderLayer, AdamW, DataLoader, etc.
-torchvision>=0.15         # not used directly but aligns with torch version;
-                          # included for environment consistency
+torch==2.4.1+cu121
+torchvision==0.19.1+cu121
 
 
 # -----------------------------------------------------------------------------
 # Audio / image loading
 # -----------------------------------------------------------------------------
-Pillow>=10.0              # load_spectrogram: PNG → numpy array (PIL.Image)
-                          # used in every model pipeline
+Pillow>=10.0
 
 
 # -----------------------------------------------------------------------------
 # Visualisation
 # -----------------------------------------------------------------------------
-matplotlib>=3.8           # learning curves, confusion matrices, attention plots
-seaborn>=0.13             # optional: heatmaps, distribution plots in EDA
+matplotlib>=3.8
+seaborn>=0.13
 
 
 # -----------------------------------------------------------------------------
 # Progress and utilities
 # -----------------------------------------------------------------------------
-tqdm>=4.66                # progress bars in build_feature_matrix and training loops
+tqdm>=4.66
 
 
 # -----------------------------------------------------------------------------
 # Notebook environment
 # -----------------------------------------------------------------------------
-jupyter>=1.0              # notebook server (notebooks/ directory)
-ipykernel>=6.29           # kernel registration for VS Code / JupyterLab
-jupyterlab>=4.0           # optional but recommended over classic notebook
+jupyter>=1.0
+ipykernel>=6.29
+jupyterlab>=4.0
 
 
 # -----------------------------------------------------------------------------
-# Code quality (optional but strongly recommended)
+# Code quality
 # -----------------------------------------------------------------------------
-black>=24.0               # code formatting
-isort>=5.13               # import sorting
-flake8>=7.0               # linting
-
-
-# =============================================================================
-# STDLIB modules used in this project (no installation needed):
-#
-#   os, pathlib           — file and directory management
-#   collections           — Counter for spectrogram audit
-#   pickle                — save/load scaler and LR model
-#   random                — participant shuffle for split construction
-#   typing                — type hints
-#
-# =============================================================================
-#
-# VERSION NOTES
-# -------------
-# numpy 2.x: fully compatible with pandas 2.x, scikit-learn 1.4+, scipy 1.11+.
-#   If you hit a numpy 2.x incompatibility with an older package, pin numpy<2.0.
-#
-# torch 2.x: TransformerEncoderLayer with batch_first=True and norm_first=True
-#   requires torch >= 1.9 and >= 2.0 respectively. Do not use torch 1.x.
-#
-# Pillow 10+: removed deprecated constants (ANTIALIAS → LANCZOS).
-#   The loader in src/features.py uses Image.BILINEAR which is stable.
-#
-# pandas 3.x: Copy-on-Write is the default. If you see SettingWithCopyWarning
-#   on pandas 2.x, add .copy() after filters as shown in the plan code.
-#   On pandas 3.x this is handled automatically.
-#
-# scikit-learn 1.4+: StratifiedKFold, LogisticRegression, and all metrics
-#   used in this project are stable across 1.4–1.8.
-#
-# =============================================================================
+black>=24.0
+isort>=5.13
+flake8>=7.0
