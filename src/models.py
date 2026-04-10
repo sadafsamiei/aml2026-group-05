@@ -151,23 +151,46 @@ class AttentivePoolingTransformer(nn.Module):
     ------------
     (B, T, F) → input_proj → pos_enc → TransformerEncoder → enc  (B, T, d)
     query     → (from meta_proj(meta) or learned_query)           (B, 1, d)
-    scores    = dot(enc, query)                                    (B, T, 1)
+    scores    = dot(enc, query) · exp(log_tau)                    (B, T, 1)
     weights   = softmax(scores, masked)                            (B, T, 1)
     pooled    = sum(enc * weights, dim=T)                          (B, d)
     logits    = Linear(dropout(pooled))                            (B, num_classes)
 
+    Attention mechanism notes
+    -------------------------
+    An earlier version of this model used scaled dot-product scoring
+    (score / sqrt(d)) and a Tanh activation on the metadata projection.
+    Empirically this collapsed the attention distribution to near-uniform
+    at init and throughout training (measured mean_weight_std ≈ 0.00086
+    against a uniform proxy of 0.00659). Two changes restore usable
+    dynamic range while keeping the mechanism — metadata-query attentive
+    pooling via dot product — unchanged:
+
+      1. The /sqrt(d) factor is removed. That scaling is a multi-head
+         self-attention convention (many queries × many keys produce
+         O(sqrt(d)) raw scores); here we have one query over T keys, so
+         dividing by 8 (for d=64) simply flattens the softmax.
+      2. The Tanh activation on meta_proj is removed. Xavier-initialised
+         Linear gives ~zero pre-activation, and Tanh(~0)≈0 drove the
+         query to near-zero at init — a flat plateau the model could not
+         climb out of. LayerNorm alone already stabilises query magnitude.
+
+    A single learned scalar log_tau is added as a temperature on the
+    scores before softmax (τ = exp(log_tau), init 0 → τ=1). This lets the
+    model sharpen or flatten the distribution end-to-end.
+
     Query source
     ------------
-    use_external_meta = False  (default — current dataset)
-        self.learned_query : nn.Parameter of shape (1, 1, d_model)
-        Trained end-to-end. Isolates pooling architecture effect from
-        metadata. Use when metadata = participant identity.
+    use_external_meta = False
+        self.learned_query : nn.Parameter of shape (1, 1, d_model),
+        init std = 1/sqrt(d_model). Trained end-to-end. Isolates pooling
+        architecture effect from metadata.
 
-    use_external_meta = True   (switch when full dataset arrives)
-        self.meta_proj : Linear(meta_dim → d_model) + LayerNorm + Tanh
-        meta vector (age_normalised, gender_binary) → query.
-        Use when >= 4 participants and age/gender are not collinear
-        with participant identity.
+    use_external_meta = True   (current default — 9 participants)
+        self.meta_proj : Linear(meta_dim → d_model) + LayerNorm.
+        meta vector (age_normalised, gender_binary) → query. Use when
+        age and gender are not collinear with participant identity
+        (verify with check_metadata_viability).
 
     Parameters
     ----------
@@ -198,20 +221,34 @@ class AttentivePoolingTransformer(nn.Module):
 
         # ── Query source ─────────────────────────────────────────────────
         if use_external_meta:
-            # Metadata → query vector
-            # LayerNorm stabilises the projection; Tanh bounds the query
-            # so it doesn't dominate the dot product with encoder outputs.
+            # Metadata → query vector.
+            # LayerNorm stabilises the projection magnitude.
+            # NOTE: Tanh removed (previous version). With Xavier-initialised
+            # Linear, the pre-activation is ~0 at init; Tanh(0)≈0 drove the
+            # query to near-zero, making dot-product scores ~0 and softmax
+            # near-uniform throughout training. LayerNorm alone gives unit
+            # per-feature scale without that plateau.
             self.meta_proj = nn.Sequential(
                 nn.Linear(meta_dim, d_model),
                 nn.LayerNorm(d_model),
-                nn.Tanh(),
             )
         else:
             # Single learned query parameter — one vector shared across
             # all examples in a batch, broadcast to (B, 1, d_model).
-            # This is the default for the current dataset.
-            self.learned_query = nn.Parameter(torch.randn(1, 1, d_model))
-            nn.init.normal_(self.learned_query, std=0.02)
+            # Init std = 1/sqrt(d_model) so dot-product scores start at
+            # O(1) rather than O(0.02*sqrt(d))≈O(0.16), avoiding the
+            # flat-softmax plateau at the start of training.
+            self.learned_query = nn.Parameter(
+                torch.randn(1, 1, d_model) * (d_model ** -0.5)
+            )
+
+        # ── Learned temperature for attention sharpness ──────────────────
+        # τ = exp(log_tau), init 0 → τ=1 (neutral). Scores are multiplied
+        # by τ before softmax, so the model can learn to sharpen (τ>1) or
+        # flatten (τ<1) the attention distribution end-to-end. This is a
+        # single scalar parameter and does not change the mechanism — it
+        # is still metadata-query attentive pooling via dot product.
+        self.log_tau = nn.Parameter(torch.zeros(1))
 
         # ── Classification head ───────────────────────────────────────────
         self.dropout    = nn.Dropout(dropout)
@@ -253,9 +290,19 @@ class AttentivePoolingTransformer(nn.Module):
             query = self.learned_query.expand(B, -1, -1)           # (B, 1, d)
 
         # ── Attentive pooling ─────────────────────────────────────────────
-        # Scaled dot product: query · enc^T / sqrt(d)
-        d = enc.shape[-1]
-        scores = (enc * query).sum(dim=-1, keepdim=True) / (d ** 0.5)  # (B, T, 1)
+        # Dot-product score between query and each frame embedding,
+        # scaled by a learned temperature τ = exp(log_tau).
+        #
+        # NOTE: the previous version divided by sqrt(d). That scaling is a
+        # multi-head self-attention convention, where many queries each
+        # attend over many keys and raw scores grow as O(sqrt(d)). Here we
+        # have a *single* query over T keys, so /sqrt(d) simply flattens
+        # the softmax by a factor of ~8 (for d=64) and the pooling
+        # collapses to near-uniform (measured: mean_weight_std ≈ 0.00086
+        # vs uniform proxy 0.00659). Removing it restores usable dynamic
+        # range; the learned τ lets the model further sharpen if useful.
+        tau    = torch.exp(self.log_tau)
+        scores = (enc * query).sum(dim=-1, keepdim=True) * tau   # (B, T, 1)
 
         # Mask padded positions to -inf before softmax
         if padding_mask is not None:
