@@ -222,7 +222,3 @@ But the test F1 in this exact condition is **0.213 ± 0.025** — the worst of t
 **Per-clip normalisation + SpecAugment as opt-in ablation** — toggled by `USE_PER_CLIP_NORM` and `USE_SPECAUGMENT` in `config.py`. Norm is applied vectorised over the cached tensor; SpecAugment is applied stochastically inside `__getitem__`, train-only.
 
 **Grayscale spectrograms from denoised audio** — clean acoustic content only (no axes or colorbar pixels). Native mel resolution (128 mel bins × T frames), resized to 128 × 230 inside the dataset.
-
-**bf16 mixed precision on GPU** — bf16 has fp32 dynamic range (no GradScaler needed) and is native on the A10. ~1.5–2× throughput.
-
-**RAM-cached spectrograms** — entire dataset (~120 MB) preloaded at dataset construction. Per-epoch training has zero file I/O. Originally a fix for a PIL file-handle hang, also a real speedup.
