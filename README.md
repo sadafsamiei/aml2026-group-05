@@ -166,13 +166,15 @@ Most Model 3 + preprocessing seeds early-stop within 20 epochs because val F1 pe
 
 ### Test confusion matrices (5 seeds, mean ± std per cell)
 
-**Model 2 — preprocessed:**
+<p align="center">
+  <img src="figures/audio_multiseed_20260411_165207_cm_test.png" alt="Model 2 norm+aug test CM" width="45%" />
+  <img src="figures/attn_multiseed_20260411_172247_cm_test.png" alt="Model 3 norm+aug test CM" width="45%" />
+</p>
 
-![Model 2 norm+aug test CM](figures/audio_multiseed_20260411_165207_cm_test.png)
-
-**Model 3 — preprocessed:**
-
-![Model 3 norm+aug test CM](figures/attn_multiseed_20260411_172247_cm_test.png)
+<p align="center">
+  <strong>Left:</strong> Model 2 — preprocessed &nbsp;&nbsp;&nbsp;
+  <strong>Right:</strong> Model 3 — preprocessed
+</p>
 
 Model 2 collapses heavily onto INTER (predicts INTER for ~63% of EXTEV, INTER, and PLTOY examples). Model 3 distributes its predictions more evenly across columns but remains biased toward PLTOY. Neither matrix shows a strong diagonal — neither model has learned class-specific features that survive the participant shift.
 
