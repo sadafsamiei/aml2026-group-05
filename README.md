@@ -52,7 +52,7 @@ External metadata query is therefore safe to use in Model 3 (`USE_EXTERNAL_META 
 
 | # | Model | Script | Status |
 |---|---|---|---|
-| 1 | Logistic Regression (MFCC features) | `train_lr_baseline.py` | ⏳ In progress (group mate) |
+| 1 | Logistic Regression (MFCC features) | `train_lr_baseline.py` | ⏳ In progress |
 | 2 | Audio-only Transformer (mean pooling) | `train_transformer_audio.py` | ✅ Done (5 seeds) |
 | 3 | Attentive Pooling Transformer | `train_transformer_attn.py` | ✅ Done (5 seeds) |
 
