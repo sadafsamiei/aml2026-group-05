@@ -454,8 +454,8 @@ def sanity_check_dataloader(loader, f_dim: int, max_len: int,
         ("mask shape == (B, MAX_LEN)", mask.shape[1] == max_len),
         ("y is int64",                 y.dtype == torch.int64),
         ("No NaN in x",                not torch.isnan(x).any().item()),
-        ("x values in [0, 1]",
-         x.min().item() >= 0.0 and x.max().item() <= 1.0),
+        ("x values are finite",
+         torch.isfinite(x).all().item()),
         ("mask is bool",               mask.dtype == torch.bool),
     ] + checks
 

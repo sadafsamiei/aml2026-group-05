@@ -34,6 +34,9 @@ from config import (
     PLTOY_LABELS, MOVE_LABELS, INTER_LABELS, EXTEV_LABELS,
     CLASS_NAMES, LABEL_ENCODER, N_CLASSES,
     SPLITS_DIR, RANDOM_SEED,
+    USE_PER_CLIP_NORM,
+    USE_SPECAUGMENT, SPECAUG_TIME_MASKS, SPECAUG_TIME_WIDTH,
+    SPECAUG_FREQ_MASKS, SPECAUG_FREQ_WIDTH,
 )
 
 
@@ -437,38 +440,94 @@ class SpectrogramDataset(Dataset):
       pad_mask : (max_len,)        bool — True = padded frame
       label    : ()                int64
 
-    Spectrograms are preloaded into RAM at __init__ time. With 1009
-    clips × 128 × 230 × 4 bytes ≈ 119 MB total this is comfortable on
-    any GPU node, eliminates per-batch PNG decoding overhead, and
-    sidesteps any file-descriptor / mount / PIL-handle issues that
-    manifest as hangs between epochs.
+    Spectrograms are preloaded into RAM at __init__ time. With ~570 train
+    clips × 230 × 128 × 4 bytes ≈ 67 MB the whole cache is comfortable on
+    any GPU node, eliminates per-batch PNG decoding overhead, and sidesteps
+    file-descriptor / mount / PIL-handle issues that can hang training.
+
+    Preprocessing pipeline (controlled by config flags):
+
+      1. PNG decode → float [0, 1] → (max_len, f_dim) tensor (cached)
+      2. Per-clip mean/variance normalisation along the time axis
+         (USE_PER_CLIP_NORM). Removes loudness/timbre drift across
+         children, the dominant nuisance variable in participant-disjoint
+         evaluation. Vectorised over the cache.
+      3. SpecAugment time + frequency masking (USE_SPECAUGMENT, train only)
+         applied stochastically inside __getitem__. Forces invariance to
+         specific time/frequency regions.
+
+    Parameters
+    ----------
+    train : if True, SpecAugment is applied in __getitem__ (when enabled
+            via config). Set False for val/test so evaluation is
+            deterministic. Defaults to False.
     """
 
-    def __init__(self, split_df, label_encoder, max_len, f_dim):
+    def __init__(self, split_df, label_encoder, max_len, f_dim,
+                 train: bool = False):
         self.records       = split_df.reset_index(drop=True)
         self.label_encoder = label_encoder
         self.max_len       = max_len
         self.f_dim         = f_dim
+        self.train         = train
 
-        # Preload every spectrogram into a single contiguous tensor
-        # of shape (N, max_len, f_dim). One-time cost: ~1–2 seconds
-        # for 569 PNGs, dwarfed by any single training epoch.
+        # Preload every spectrogram into a single contiguous tensor of
+        # shape (N, max_len, f_dim). One-time cost: ~1–2s for 569 PNGs.
         n = len(self.records)
         self._cache = torch.empty((n, max_len, f_dim), dtype=torch.float32)
         for i in range(n):
             png_path = self.records.iloc[i]["png_path"]
             spec = load_png(png_path,
                             target_height=f_dim,
-                            target_width=max_len)   # (f_dim, max_len)
-            self._cache[i] = torch.from_numpy(spec.T)  # (max_len, f_dim)
+                            target_width=max_len)        # (f_dim, max_len)
+            self._cache[i] = torch.from_numpy(spec.T)    # (max_len, f_dim)
+
+        # ── Per-clip normalisation (vectorised over the whole cache) ────
+        # Mean/std along the time axis (dim=1) per clip per feature, then
+        # standardise. Done once at construction so the cost is amortised
+        # across all epochs. After this, the per-clip mean is 0 and std is
+        # 1 along time, which is also why SpecAugment uses 0 as the
+        # mask-fill value below.
+        if USE_PER_CLIP_NORM:
+            mean = self._cache.mean(dim=1, keepdim=True)
+            std  = self._cache.std (dim=1, keepdim=True).clamp(min=1e-6)
+            self._cache = (self._cache - mean) / std
 
     def __len__(self):
         return len(self.records)
+
+    def _spec_augment(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Apply SpecAugment time + frequency masking to a single clip.
+        Operates on a CLONE of the cached tensor — never the cache
+        itself, which is shared across epochs and must stay immutable.
+        Masked values are set to 0.0 (the per-clip mean after step 2).
+        """
+        x = x.clone()
+        T, F = x.shape
+
+        for _ in range(SPECAUG_TIME_MASKS):
+            t_width = int(torch.randint(0, SPECAUG_TIME_WIDTH + 1, (1,)).item())
+            if t_width == 0 or T - t_width <= 0:
+                continue
+            t_start = int(torch.randint(0, T - t_width, (1,)).item())
+            x[t_start:t_start + t_width, :] = 0.0
+
+        for _ in range(SPECAUG_FREQ_MASKS):
+            f_width = int(torch.randint(0, SPECAUG_FREQ_WIDTH + 1, (1,)).item())
+            if f_width == 0 or F - f_width <= 0:
+                continue
+            f_start = int(torch.randint(0, F - f_width, (1,)).item())
+            x[:, f_start:f_start + f_width] = 0.0
+
+        return x
 
     def __getitem__(self, idx):
         row = self.records.iloc[idx]
         # Pure RAM lookup — no file I/O during training.
         x        = self._cache[idx]
+        if self.train and USE_SPECAUGMENT:
+            x = self._spec_augment(x)
         pad_mask = torch.zeros(self.max_len, dtype=torch.bool)
         label    = self.label_encoder[row["class4"]]
         return (
@@ -492,8 +551,9 @@ class MetadataSpectrogramDataset(SpectrogramDataset):
     """
 
     def __init__(self, split_df, label_encoder, max_len, f_dim,
-                 meta_stats: dict = None, use_external_meta: bool = False):
-        super().__init__(split_df, label_encoder, max_len, f_dim)
+                 meta_stats: dict = None, use_external_meta: bool = False,
+                 train: bool = False):
+        super().__init__(split_df, label_encoder, max_len, f_dim, train=train)
         self.use_external_meta = use_external_meta
         self.meta_stats        = meta_stats or {}
 

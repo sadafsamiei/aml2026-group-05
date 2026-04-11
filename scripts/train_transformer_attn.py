@@ -237,13 +237,13 @@ def run_single(folds, f_dim, max_len, hparams, device,
 
         train_ds = MetadataSpectrogramDataset(
             train_df, LABEL_ENCODER, max_len, f_dim,
-            meta_stats=meta_stats, use_external_meta=use_meta)
+            meta_stats=meta_stats, use_external_meta=use_meta, train=True)
         val_ds   = MetadataSpectrogramDataset(
             val_df,   LABEL_ENCODER, max_len, f_dim,
-            meta_stats=meta_stats, use_external_meta=use_meta)
+            meta_stats=meta_stats, use_external_meta=use_meta, train=False)
         test_ds  = MetadataSpectrogramDataset(
             test_df,  LABEL_ENCODER, max_len, f_dim,
-            meta_stats=meta_stats, use_external_meta=use_meta)
+            meta_stats=meta_stats, use_external_meta=use_meta, train=False)
 
         train_loader = DataLoader(train_ds, batch_size=hparams["batch_size"],
                                   shuffle=True, num_workers=0,

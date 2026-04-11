@@ -36,7 +36,7 @@ CONTEXTS_CSV = DATA_DIR / "contextsvocs_groupproject_2026-04-09_104847.csv"
 # ---------------------------------------------------------------------------
 # Output paths  (derived from RES_DIR — READ/WRITE, synced to SwitchDrive)
 # ---------------------------------------------------------------------------
-SPEC_DIR    = RES_DIR / "spectrograms"   
+SPEC_DIR    = RES_DIR / "spectrograms"   # generated from WAV files — writable
 SPLITS_DIR  = RES_DIR / "splits"
 MODELS_DIR  = RES_DIR / "models"
 RESULTS_DIR = RES_DIR / "results"
@@ -98,6 +98,24 @@ HPARAM_FULL = {
 
 # Active default — FULL because we have 1009 examples
 HPARAM_DEFAULTS = HPARAM_FULL
+
+# ---------------------------------------------------------------------------
+# Preprocessing / augmentation flags
+# ---------------------------------------------------------------------------
+# Per-clip mean/variance normalisation of the cached spectrogram tensor.
+# Subtracts the per-clip mean and divides by the per-clip std along the
+# time axis. Removes loudness/timbre drift across children, which is the
+# dominant nuisance variable in participant-disjoint evaluation.
+# Vectorised, applied once at dataset construction.
+USE_PER_CLIP_NORM = True
+
+# SpecAugment (time + frequency masking) applied train-only inside
+# __getitem__. Default values are conservative for short clips.
+USE_SPECAUGMENT     = True
+SPECAUG_TIME_MASKS  = 2     # number of time bands to mask
+SPECAUG_TIME_WIDTH  = 25    # max width (frames) of each time band
+SPECAUG_FREQ_MASKS  = 2     # number of frequency bands to mask
+SPECAUG_FREQ_WIDTH  = 12    # max width (mel bins) of each freq band
 
 # Hyperparameter grid (used with --grid_search flag)
 HPARAM_GRID = [

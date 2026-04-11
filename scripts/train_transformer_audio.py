@@ -166,9 +166,12 @@ def run_single(folds, f_dim, max_len, hparams, device, run_tag="single"):
               f"batch={hparams['batch_size']}")
         print(f"{'='*55}")
 
-        train_ds = SpectrogramDataset(train_df, LABEL_ENCODER, max_len, f_dim)
-        val_ds   = SpectrogramDataset(val_df,   LABEL_ENCODER, max_len, f_dim)
-        test_ds  = SpectrogramDataset(test_df,  LABEL_ENCODER, max_len, f_dim)
+        train_ds = SpectrogramDataset(train_df, LABEL_ENCODER, max_len, f_dim,
+                                      train=True)
+        val_ds   = SpectrogramDataset(val_df,   LABEL_ENCODER, max_len, f_dim,
+                                      train=False)
+        test_ds  = SpectrogramDataset(test_df,  LABEL_ENCODER, max_len, f_dim,
+                                      train=False)
 
         train_loader = DataLoader(train_ds, batch_size=hparams["batch_size"],
                                   shuffle=True, num_workers=0,
