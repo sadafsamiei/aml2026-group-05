@@ -171,10 +171,14 @@ def run_single(folds, f_dim, max_len, hparams, device, run_tag="single"):
         test_ds  = SpectrogramDataset(test_df,  LABEL_ENCODER, max_len, f_dim)
 
         train_loader = DataLoader(train_ds, batch_size=hparams["batch_size"],
-                                  shuffle=True, num_workers=2,
+                                  shuffle=True, num_workers=0,
                                   pin_memory=(device.type == "cuda"))
-        val_loader   = DataLoader(val_ds,   batch_size=64, shuffle=False, num_workers=2)
-        test_loader  = DataLoader(test_ds,  batch_size=64, shuffle=False, num_workers=2)
+        val_loader   = DataLoader(val_ds,   batch_size=128, shuffle=False,
+                                  num_workers=0,
+                                  pin_memory=(device.type == "cuda"))
+        test_loader  = DataLoader(test_ds,  batch_size=128, shuffle=False,
+                                  num_workers=0,
+                                  pin_memory=(device.type == "cuda"))
 
         if fold_i == 0:
             sanity_check_dataloader(train_loader, f_dim, max_len)
@@ -244,6 +248,19 @@ def run_single(folds, f_dim, max_len, hparams, device, run_tag="single"):
             "stopped_epoch"    : train_result["stopped_epoch"],
             "elapsed_s"        : train_result["elapsed_s"],
             "checkpoint"       : str(save_path),
+            # ── Added for multi-seed wrapper ─────────────────────────────
+            # The wrapper (scripts/train_multiseed.py) needs these fields
+            # to build training-curve overlays and averaged confusion
+            # matrices across seeds. Adding them is a pure data widening:
+            # nothing about the per-fold training, evaluation, or saved
+            # JSON shape changes for the existing single-run workflow,
+            # because save_results() simply serialises whatever dict we
+            # hand it (lists of ints/floats are JSON-safe).
+            "history"          : train_result["history"],
+            "val_preds"        : val_result["preds"],
+            "val_labels"       : val_result["labels"],
+            "test_preds"       : test_result["preds"],
+            "test_labels"      : test_result["labels"],
         }
         all_results.append(fold_summary)
         save_results(fold_summary, RESULTS_DIR / f"fold_results_{fold_tag}.json")
@@ -332,6 +349,8 @@ def main():
     args = parse_args()
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
 
     cfg.print_config()
     cfg.make_output_dirs()

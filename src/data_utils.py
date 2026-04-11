@@ -407,16 +407,22 @@ def load_png(png_path: str, target_height: int = None,
     """
     Load a spectrogram PNG → float32 (F, T) in [0, 1].
     Converts RGB/RGBA to grayscale. Resizes if target dimensions are given.
+
+    Uses a `with` block so the file handle is released immediately. Without
+    this, PIL's lazy loader can leave file descriptors open long enough for
+    FD exhaustion on larger datasets, which manifests as a silent hang on
+    later reads.
     """
-    img = Image.open(png_path)
-    if img.mode in ("RGB", "RGBA"):
-        img = img.convert("L")
-    if target_height is not None or target_width is not None:
-        h = target_height if target_height is not None else img.size[1]
-        w = target_width  if target_width  is not None else img.size[0]
-        if img.size != (w, h):
-            img = img.resize((w, h), Image.BILINEAR)
-    return np.array(img, dtype=np.float32) / 255.0
+    with Image.open(png_path) as img:
+        img.load()  # force decode so the file can be closed
+        if img.mode in ("RGB", "RGBA"):
+            img = img.convert("L")
+        if target_height is not None or target_width is not None:
+            h = target_height if target_height is not None else img.size[1]
+            w = target_width  if target_width  is not None else img.size[0]
+            if img.size != (w, h):
+                img = img.resize((w, h), Image.BILINEAR)
+        return np.array(img, dtype=np.float32) / 255.0
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +436,12 @@ class SpectrogramDataset(Dataset):
       x        : (max_len, f_dim)  float32
       pad_mask : (max_len,)        bool — True = padded frame
       label    : ()                int64
+
+    Spectrograms are preloaded into RAM at __init__ time. With 1009
+    clips × 128 × 230 × 4 bytes ≈ 119 MB total this is comfortable on
+    any GPU node, eliminates per-batch PNG decoding overhead, and
+    sidesteps any file-descriptor / mount / PIL-handle issues that
+    manifest as hangs between epochs.
     """
 
     def __init__(self, split_df, label_encoder, max_len, f_dim):
@@ -438,24 +450,29 @@ class SpectrogramDataset(Dataset):
         self.max_len       = max_len
         self.f_dim         = f_dim
 
+        # Preload every spectrogram into a single contiguous tensor
+        # of shape (N, max_len, f_dim). One-time cost: ~1–2 seconds
+        # for 569 PNGs, dwarfed by any single training epoch.
+        n = len(self.records)
+        self._cache = torch.empty((n, max_len, f_dim), dtype=torch.float32)
+        for i in range(n):
+            png_path = self.records.iloc[i]["png_path"]
+            spec = load_png(png_path,
+                            target_height=f_dim,
+                            target_width=max_len)   # (f_dim, max_len)
+            self._cache[i] = torch.from_numpy(spec.T)  # (max_len, f_dim)
+
     def __len__(self):
         return len(self.records)
 
     def __getitem__(self, idx):
-        row  = self.records.iloc[idx]
-        # Always resize to (self.f_dim, self.max_len) — explicit, guaranteed.
-        # This converts the 1000×400 viridis PNG to 128×200 actual mel resolution,
-        # removing axes/labels and reducing attention cost by 25×.
-        spec = load_png(row["png_path"],
-                        target_height=self.f_dim,
-                        target_width=self.max_len)    # (f_dim, max_len)
-        spec     = spec.T                             # (max_len, f_dim) time-first
-        # All images are now exactly (max_len, f_dim) — no padding needed
+        row = self.records.iloc[idx]
+        # Pure RAM lookup — no file I/O during training.
+        x        = self._cache[idx]
         pad_mask = torch.zeros(self.max_len, dtype=torch.bool)
-
-        label = self.label_encoder[row["class4"]]
+        label    = self.label_encoder[row["class4"]]
         return (
-            torch.from_numpy(spec),
+            x,
             pad_mask,
             torch.tensor(label, dtype=torch.long),
         )

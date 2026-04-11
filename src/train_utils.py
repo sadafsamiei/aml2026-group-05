@@ -4,6 +4,19 @@ train_utils.py
 Training loop, evaluation, sanity checks, and results logging.
 Supports both the audio-only Transformer (Model 2) and the attentive
 pooling Transformer (Model 3) via a use_meta flag.
+
+GPU notes
+---------
+- cudnn.benchmark is enabled at import time. Our input shapes are fixed
+  (B, MAX_LEN, F_DIM), so cuDNN can pick the fastest algorithm once and
+  cache it. Free speedup on Ampere GPUs.
+- Mixed precision uses bfloat16 (torch.amp.autocast). bf16 has the same
+  dynamic range as fp32 (no GradScaler needed) and is natively supported
+  on the A10. Forward+backward run in bf16; the optimiser keeps fp32
+  master weights. Activation memory roughly halves, throughput improves
+  ~1.5–2× on small Transformers.
+- All .to(device) calls use non_blocking=True so host→device copies can
+  overlap with compute when pin_memory=True on the DataLoader.
 """
 
 import json
@@ -17,13 +30,17 @@ from sklearn.metrics import f1_score, classification_report, confusion_matrix
 
 from config import CLASS_NAMES, LABEL_DECODER
 
+# Enable cuDNN autotuner for fixed-shape inputs (free speedup on GPU).
+torch.backends.cudnn.benchmark = True
+
 
 # ---------------------------------------------------------------------------
 # Training: one epoch
 # ---------------------------------------------------------------------------
 
 def train_one_epoch(model, loader, optimizer, criterion, device,
-                    use_meta: bool = False, grad_clip: float = 1.0) -> dict:
+                    use_meta: bool = False, grad_clip: float = 1.0,
+                    use_amp: bool = True) -> dict:
     """
     Run one training epoch.
 
@@ -33,6 +50,9 @@ def train_one_epoch(model, loader, optimizer, criterion, device,
                model(x, padding_mask=mask, meta=meta).
                If False, expects (x, mask, y) and calls
                model(x, padding_mask=mask) — compatible with AudioTransformer.
+    use_amp  : if True and device is CUDA, run forward+backward in bf16
+               via torch.amp.autocast. bf16 has fp32 dynamic range so no
+               GradScaler is needed. On CPU this flag is ignored.
 
     Returns dict with keys: 'loss', 'grad_norm'
     """
@@ -41,25 +61,42 @@ def train_one_epoch(model, loader, optimizer, criterion, device,
     total_grad = 0.0
     n_batches  = 0
 
+    amp_enabled = bool(use_amp and device.type == "cuda")
+    amp_dtype   = torch.bfloat16
+
     for batch in loader:
         # Unpack however many items the DataLoader actually yields
         x, mask, y = batch[0], batch[1], batch[2]
         meta = batch[3] if len(batch) == 4 else None
 
         if use_meta and meta is not None:
-            x, mask, y, meta = (x.to(device), mask.to(device),
-                                 y.to(device), meta.to(device))
-            # AttentivePoolingTransformer returns (logits, weights)
-            logits, _ = model(x, padding_mask=mask, meta=meta)
+            x    = x   .to(device, non_blocking=True)
+            mask = mask.to(device, non_blocking=True)
+            y    = y   .to(device, non_blocking=True)
+            meta = meta.to(device, non_blocking=True)
         else:
-            x, mask, y = x.to(device), mask.to(device), y.to(device)
-            # AudioTransformer returns logits directly
-            # AttentivePoolingTransformer with use_meta=False still returns tuple
-            out = model(x, padding_mask=mask)
-            logits = out[0] if isinstance(out, tuple) else out
+            x    = x   .to(device, non_blocking=True)
+            mask = mask.to(device, non_blocking=True)
+            y    = y   .to(device, non_blocking=True)
 
-        loss = criterion(logits, y)
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
+
+        with torch.amp.autocast(device_type="cuda", dtype=amp_dtype,
+                                enabled=amp_enabled):
+            if use_meta and meta is not None:
+                # AttentivePoolingTransformer returns (logits, weights)
+                logits, _ = model(x, padding_mask=mask, meta=meta)
+            else:
+                # AudioTransformer returns logits directly;
+                # AttentivePoolingTransformer with use_meta=False still
+                # returns a tuple, so handle both shapes.
+                out = model(x, padding_mask=mask)
+                logits = out[0] if isinstance(out, tuple) else out
+
+            loss = criterion(logits, y)
+
+        # bf16 has fp32 dynamic range, so we can backward directly
+        # without a GradScaler.
         loss.backward()
         grad_norm = nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
@@ -79,7 +116,8 @@ def train_one_epoch(model, loader, optimizer, criterion, device,
 # ---------------------------------------------------------------------------
 
 def evaluate(model, loader, device,
-             use_meta: bool = False, return_preds: bool = False) -> dict:
+             use_meta: bool = False, return_preds: bool = False,
+             use_amp: bool = True) -> dict:
     """
     Evaluate the model on a data loader.
 
@@ -87,6 +125,9 @@ def evaluate(model, loader, device,
     ----------
     use_meta     : match the flag used during training.
     return_preds : if True, include raw prediction and label lists.
+    use_amp      : if True and device is CUDA, run forward in bf16. The
+                   argmax over logits is unaffected by bf16 vs fp32 in
+                   practice.
 
     Returns dict with keys: 'macro_f1', 'per_class_f1',
     and optionally 'preds', 'labels', 'attn_weights'.
@@ -96,24 +137,34 @@ def evaluate(model, loader, device,
     all_labels  = []
     all_weights = []   # attention weights (only for attentive pooling model)
 
+    amp_enabled = bool(use_amp and device.type == "cuda")
+    amp_dtype   = torch.bfloat16
+
     with torch.no_grad():
         for batch in loader:
             # Unpack however many items the DataLoader actually yields
             x, mask, y = batch[0], batch[1], batch[2]
             meta = batch[3] if len(batch) == 4 else None
 
+            x    = x   .to(device, non_blocking=True)
+            mask = mask.to(device, non_blocking=True)
             if use_meta and meta is not None:
-                x, mask, meta = x.to(device), mask.to(device), meta.to(device)
-                out = model(x, padding_mask=mask, meta=meta)
-            else:
-                x, mask = x.to(device), mask.to(device)
-                out = model(x, padding_mask=mask)
+                meta = meta.to(device, non_blocking=True)
+
+            with torch.amp.autocast(device_type="cuda", dtype=amp_dtype,
+                                    enabled=amp_enabled):
+                if use_meta and meta is not None:
+                    out = model(x, padding_mask=mask, meta=meta)
+                else:
+                    out = model(x, padding_mask=mask)
 
             # Handle both AudioTransformer (returns tensor) and
             # AttentivePoolingTransformer (returns tuple)
             if isinstance(out, tuple):
                 logits, weights = out
-                all_weights.append(weights.cpu())
+                # Cast attention weights back to fp32 for downstream stats
+                # (analyse_attention_weights, plotting, etc.)
+                all_weights.append(weights.float().cpu())
             else:
                 logits = out
 

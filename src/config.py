@@ -36,7 +36,7 @@ CONTEXTS_CSV = DATA_DIR / "contextsvocs_groupproject_2026-04-09_104847.csv"
 # ---------------------------------------------------------------------------
 # Output paths  (derived from RES_DIR — READ/WRITE, synced to SwitchDrive)
 # ---------------------------------------------------------------------------
-SPEC_DIR    = RES_DIR / "spectrograms"   # generated from WAV files — writable
+SPEC_DIR    = RES_DIR / "spectrograms"   
 SPLITS_DIR  = RES_DIR / "splits"
 MODELS_DIR  = RES_DIR / "models"
 RESULTS_DIR = RES_DIR / "results"
@@ -93,7 +93,7 @@ HPARAM_SMALL = {
 HPARAM_FULL = {
     "d_model": 64, "nhead": 4, "num_layers": 2,
     "dropout": 0.3, "lr": 1e-3, "weight_decay": 1e-4,
-    "batch_size": 32, "epochs": 100, "patience": 15,
+    "batch_size": 64, "epochs": 100, "patience": 15,
 }
 
 # Active default — FULL because we have 1009 examples
