@@ -102,8 +102,6 @@ USE_PER_CLIP_NORM = True   # per-clip mean/variance normalisation
 USE_SPECAUGMENT   = True   # train-only time + frequency masking
 ```
 
-Hardware: NVIDIA A10 (8 GB) with PyTorch 2.4 + CUDA 12.1, bf16 mixed precision. Each multi-seed run completes in ~5 minutes.
-
 ---
 
 ## Results
@@ -210,6 +208,8 @@ But the test F1 in this exact condition is **0.213 ± 0.025** — the worst of t
 ---
 
 ## Key Design Decisions
+
+**Evaluation Protocol** - The dataset contains 9 participants with markedly unequal contribution sizes (ranging from 11 to 269 clips). We assign 1 child to test, 1 to val, and the remaining 7 to train, which corresponds to the spec's nominal 70/15/15 split in terms of participant count. Because the two largest children (child_6 with 269 clips and child_2 with 171 clips) also have the most class-balanced individual distributions, we assign them to test and val respectively, prioritising class coverage in the held-out splits over strict clip-count ratio matching. The resulting clip-count ratio is 569/171/269 (56/17/27), which deviates from the literal 70/15/15 specification. We accept this deviation because (a) any participant-disjoint split with 9 unequal-sized children cannot exactly match a 70/15/15 clip-count ratio, and (b) using smaller children for the held-out splits would risk leaving entire classes absent from val or test — the precise failure mode the problem setting flags as the rationale for participant-aware protocol selection.
 
 **Participant-disjoint evaluation** — children are assigned to splits once and never moved.
 
