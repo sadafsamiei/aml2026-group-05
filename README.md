@@ -189,7 +189,7 @@ The multi-seed wrapper produces an aggregated JSON, an overlay of training
 curves across seeds, averaged confusion matrices for val and test, and
 (for Model 3) an attention-weight overlay on a fixed val example across seeds.
 
-### Step 4 — Train Model 1 (in progress, group mate)
+### Step 4 — Train Model 1 (in progress)
 
 ```bash
 python scripts/train_lr_baseline.py
