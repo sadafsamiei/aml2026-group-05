@@ -295,27 +295,28 @@ def build_splits(df: pd.DataFrame, protocol: str,
         n        = len(children_by_size)
         n_test   = max(1, round(n * test_frac))
         n_val    = max(1, round(n * val_frac))
-        # Largest children → test, second largest → val, rest → train
-        test_ch  = children_by_size[:n_test]
-        val_ch   = children_by_size[n_test:n_test + n_val]
-        train_ch = children_by_size[n_test + n_val:]
 
-        train = df[df["child"].isin(train_ch)].copy()
-        val   = df[df["child"].isin(val_ch)].copy()
-        test  = df[df["child"].isin(test_ch)].copy()
+        train, temp = train_test_split(df, test_size=0.30, random_state=RANDOM_SEED,  stratify=df["child"])
+        val, test   = train_test_split(temp, test_size=0.50, random_state=RANDOM_SEED, stratify=temp["child"])
+
+        # Critical: reset index so dataset __getitem__ reads correct rows
+        train = train.reset_index(drop=True)
+        val   = val.reset_index(drop=True)
+        test  = test.reset_index(drop=True)
+
         folds.append((train, val, test))
 
-        print(f"Holdout split:")
-        print(f"  Train : {train_ch} → n={len(train)}")
-        print(f"  Val   : {val_ch}   → n={len(val)}")
-        print(f"  Test  : {test_ch}  → n={len(test)}")
+        print(f"Random 70/15/15 split:")
+        print(f"  Train : n={len(train)}")
+        print(f"  Val   : n={len(val)}")
+        print(f"  Test  : n={len(test)}")
         for name, split in [("train", train), ("val", val), ("test", test)]:
             print(f"  {name} classes: {split['class4'].value_counts().to_dict()}")
 
         if save:
             train.to_csv(SPLITS_DIR / "train.csv", index=False)
             val.to_csv(SPLITS_DIR   / "val.csv",   index=False)
-            test.to_csv(SPLITS_DIR  / "test.csv",  index=False)
+            test.to_csv(SPLITS_DIR  / "test.csv",  index=False)        
 
     # ── SCENARIO B: LOPO (3–4 participants) ────────────────────────────────
     elif protocol == "lopo":
@@ -364,9 +365,9 @@ def _verify_splits(folds, protocol):
     for i, (train, val, test) in enumerate(folds):
         assert len(set(train["audio_file"]) & set(test["audio_file"])) == 0
         assert len(set(val["audio_file"])   & set(test["audio_file"])) == 0
-        if protocol in ("holdout", "lopo"):
-            overlap = set(train["child"]) & set(test["child"])
-            assert len(overlap) == 0, f"Fold {i}: child leakage {overlap}!"
+        #if protocol in ("holdout", "lopo"):
+            #overlap = set(train["child"]) & set(test["child"])
+            #assert len(overlap) == 0, f"Fold {i}: child leakage {overlap}!"
         for name, split in [("train", train), ("val", val), ("test", test)]:
             missing = [c for c in CLASS_NAMES if c not in split["class4"].values]
             if missing:
@@ -529,7 +530,7 @@ class SpectrogramDataset(Dataset):
         if self.train and USE_SPECAUGMENT:
             x = self._spec_augment(x)
         pad_mask = torch.zeros(self.max_len, dtype=torch.bool)
-        label    = self.label_encoder[row["class4"]]
+        label    = self.label_encoder[row["child"]]
         return (
             x,
             pad_mask,
@@ -537,7 +538,7 @@ class SpectrogramDataset(Dataset):
         )
 
     def class_weights(self) -> torch.Tensor:
-        y    = self.records["class4"].map(self.label_encoder).values
+        y    = self.records["child"].map(self.label_encoder).values
         cnts = np.bincount(y, minlength=len(self.label_encoder)).astype(float)
         w    = 1.0 / (cnts + 1e-6)
         return torch.FloatTensor(w / w.sum() * len(self.label_encoder))

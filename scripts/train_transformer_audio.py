@@ -151,7 +151,8 @@ def run_single(folds, f_dim, max_len, hparams, device, run_tag="single"):
 
     for fold_i, (train_df, val_df, test_df) in enumerate(folds):
         present = sorted(
-            set(train_df["class4"]) | set(val_df["class4"]) | set(test_df["class4"])
+            #set(train_df["class4"]) | set(val_df["class4"]) | set(test_df["class4"])
+            set(train_df["child"]) | set(val_df["child"]) | set(test_df["child"])
         )
         n_present = len(present)
         fold_tag  = f"{run_tag}_fold{fold_i}_{timestamp}"

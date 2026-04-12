@@ -51,7 +51,8 @@ MOVE_LABELS  = {"MOVE"}
 INTER_LABELS = {"INTER"}
 EXTEV_LABELS = {"EXTEV"}
 
-CLASS_NAMES   = ["EXTEV", "INTER", "MOVE", "PLTOY"]
+#CLASS_NAMES   = ["EXTEV", "INTER", "MOVE", "PLTOY"]
+CLASS_NAMES   = ["child_1", "child_2", "child_3", "child_4", "child_5", "child_6", "child_7", "child_8", "child_9"]
 LABEL_ENCODER = {c: i for i, c in enumerate(CLASS_NAMES)}
 LABEL_DECODER = {i: c for c, i in LABEL_ENCODER.items()}
 N_CLASSES     = len(CLASS_NAMES)

@@ -89,7 +89,7 @@ class AudioTransformer(nn.Module):
 
     def __init__(self, input_dim: int, d_model: int = 64, nhead: int = 4,
                  num_layers: int = 2, dropout: float = 0.3,
-                 num_classes: int = 4, max_len: int = 512):
+                 num_classes: int = 9, max_len: int = 512):
         super().__init__()
         self.input_proj = nn.Linear(input_dim, d_model)
         self.pos_enc    = nn.Embedding(max_len, d_model)
