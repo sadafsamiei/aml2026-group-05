@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+training_data/
+anonymized_audios/
+denoised_audios/
+*.wav
+*.csv
