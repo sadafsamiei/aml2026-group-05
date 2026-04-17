@@ -38,6 +38,7 @@ CONTEXTS_CSV = DATA_DIR / "contextsvocs_groupproject_2026-04-09_104847.csv"
 # ---------------------------------------------------------------------------
 SPEC_DIR    = RES_DIR / "spectrograms"   # generated from WAV files — writable
 MFCC_DIR    = RES_DIR / "mfccs"          # MFCC .npy files (from audio_to_mfccs.py)
+PRETRAINED_DIR = RES_DIR / "pretrained_embeddings"  # wav2vec2 .npy files (from Colab)
 SPLITS_DIR  = RES_DIR / "splits"
 MODELS_DIR  = RES_DIR / "models"
 RESULTS_DIR = RES_DIR / "results"
@@ -107,18 +108,30 @@ HPARAM_DEFAULTS = HPARAM_FULL
 # spectrogram PNGs from SPEC_DIR — this is the spec-compliant configuration.
 # When True, it loads MFCC .npy files from MFCC_DIR instead. Both produce
 # (MAX_LEN, F_DIM) tensors so no other config changes are needed.
-USE_MFCC = True
+USE_MFCC = False
+
+# Pretrained audio embeddings (wav2vec2-base). When True, loads .npy files
+# from PRETRAINED_DIR and overrides F_DIM to 768 (wav2vec2 embedding dim).
+# Extract embeddings using the Colab notebook (extract_wav2vec2_embeddings.ipynb).
+USE_PRETRAINED = True
+
+assert not (USE_MFCC and USE_PRETRAINED), \
+    "Cannot use both USE_MFCC and USE_PRETRAINED — pick one."
+
+# Override F_DIM for pretrained embeddings (768-dim wav2vec2 output)
+if USE_PRETRAINED:
+    F_DIM = 768
 
 # Per-clip mean/variance normalisation of the cached spectrogram tensor.
 # Subtracts the per-clip mean and divides by the per-clip std along the
 # time axis. Removes loudness/timbre drift across children, which is the
 # dominant nuisance variable in participant-disjoint evaluation.
 # Vectorised, applied once at dataset construction.
-USE_PER_CLIP_NORM = True
+USE_PER_CLIP_NORM = False
 
 # SpecAugment (time + frequency masking) applied train-only inside
 # __getitem__. Default values are conservative for short clips.
-USE_SPECAUGMENT     = True
+USE_SPECAUGMENT     = False
 SPECAUG_TIME_MASKS  = 2     # number of time bands to mask
 SPECAUG_TIME_WIDTH  = 25    # max width (frames) of each time band
 SPECAUG_FREQ_MASKS  = 2     # number of frequency bands to mask
@@ -143,7 +156,7 @@ RANDOM_SEED = 42
 # ---------------------------------------------------------------------------
 def make_output_dirs():
     """Create all output directories. Safe to call multiple times."""
-    for d in [SPEC_DIR, MFCC_DIR, SPLITS_DIR, MODELS_DIR, RESULTS_DIR, FIGURES_DIR]:
+    for d in [SPEC_DIR, MFCC_DIR, PRETRAINED_DIR, SPLITS_DIR, MODELS_DIR, RESULTS_DIR, FIGURES_DIR]:
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -165,7 +178,11 @@ def print_config():
     print(f"Classes       : {CLASS_NAMES}")
     print(f"Lang filter   : {LANG_FILTER!r}  (None = all languages)")
     print(f"Active preset : {preset}")
-    feat_src = "MFCC .npy" if USE_MFCC else "mel spectrogram PNG"
+    feat_src = ("wav2vec2 pretrained .npy" if USE_PRETRAINED else
+                "MFCC .npy" if USE_MFCC else "mel spectrogram PNG")
+    feat_desc = ("wav2vec2-base (768-dim, last layer)" if USE_PRETRAINED else
+                 "MFCC (40+Δ+ΔΔ → 120, padded to 128)" if USE_MFCC else
+                 "mel spectrogram (128 bins)")
     print(f"F_DIM / MAX_LEN : {F_DIM} / {MAX_LEN}  (input: {feat_src})")
-    print(f"Features        : {'MFCC (40+Δ+ΔΔ → 120, padded to 128)' if USE_MFCC else 'mel spectrogram (128 bins)'}")
+    print(f"Features        : {feat_desc}")
     print("=" * 62)

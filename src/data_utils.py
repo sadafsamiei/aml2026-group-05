@@ -30,11 +30,11 @@ from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split, StratifiedKFold
 
 from config import (
-    CONTEXTS_CSV, SPEC_DIR, MFCC_DIR, WAV_DIR,
+    CONTEXTS_CSV, SPEC_DIR, MFCC_DIR, PRETRAINED_DIR, WAV_DIR,
     PLTOY_LABELS, MOVE_LABELS, INTER_LABELS, EXTEV_LABELS,
     CLASS_NAMES, LABEL_ENCODER, N_CLASSES,
     SPLITS_DIR, RANDOM_SEED,
-    USE_MFCC, USE_PER_CLIP_NORM,
+    USE_MFCC, USE_PRETRAINED, USE_PER_CLIP_NORM,
     USE_SPECAUGMENT, SPECAUG_TIME_MASKS, SPECAUG_TIME_WIDTH,
     SPECAUG_FREQ_MASKS, SPECAUG_FREQ_WIDTH,
 )
@@ -476,13 +476,16 @@ class SpectrogramDataset(Dataset):
 
         # Preload every input into a single contiguous tensor of
         # shape (N, max_len, f_dim). One-time cost: ~1–2s for 569 clips.
-        # When USE_MFCC is True, loads .npy files from MFCC_DIR instead of
-        # PNG spectrograms from SPEC_DIR. Both produce identical shapes.
+        # Supports three input modes: pretrained embeddings, MFCC, or mel spectrogram.
         n = len(self.records)
         self._cache = torch.empty((n, max_len, f_dim), dtype=torch.float32)
         for i in range(n):
-            if USE_MFCC:
-                audio_id = self.records.iloc[i]["audio_ID"]
+            audio_id = self.records.iloc[i]["audio_ID"]
+            if USE_PRETRAINED:
+                emb_path = str(PRETRAINED_DIR / f"{audio_id}.npy")
+                feat = np.load(emb_path)                     # (768, max_len)
+                self._cache[i] = torch.from_numpy(feat.T)    # (max_len, 768)
+            elif USE_MFCC:
                 mfcc_path = str(MFCC_DIR / f"{audio_id}.npy")
                 feat = np.load(mfcc_path)                    # (f_dim, max_len)
                 self._cache[i] = torch.from_numpy(feat.T)    # (max_len, f_dim)
