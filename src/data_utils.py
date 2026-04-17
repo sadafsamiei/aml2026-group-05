@@ -30,11 +30,11 @@ from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split, StratifiedKFold
 
 from config import (
-    CONTEXTS_CSV, SPEC_DIR, WAV_DIR,
+    CONTEXTS_CSV, SPEC_DIR, MFCC_DIR, WAV_DIR,
     PLTOY_LABELS, MOVE_LABELS, INTER_LABELS, EXTEV_LABELS,
     CLASS_NAMES, LABEL_ENCODER, N_CLASSES,
     SPLITS_DIR, RANDOM_SEED,
-    USE_PER_CLIP_NORM,
+    USE_MFCC, USE_PER_CLIP_NORM,
     USE_SPECAUGMENT, SPECAUG_TIME_MASKS, SPECAUG_TIME_WIDTH,
     SPECAUG_FREQ_MASKS, SPECAUG_FREQ_WIDTH,
 )
@@ -108,6 +108,9 @@ def build_master_table(
     # PNG path: direct filename match (no positional assignment needed)
     df["png_path"]   = df["audio_ID"].apply(
         lambda aid: str(spec_dir / f"{aid}.png")
+    )
+    df["mfcc_path"]  = df["audio_ID"].apply(
+        lambda aid: str(MFCC_DIR / f"{aid}.npy")
     )
     df["wav_path"]   = df["audio_ID"].apply(
         lambda aid: str(WAV_DIR / f"{aid}.wav")
@@ -471,16 +474,23 @@ class SpectrogramDataset(Dataset):
         self.f_dim         = f_dim
         self.train         = train
 
-        # Preload every spectrogram into a single contiguous tensor of
-        # shape (N, max_len, f_dim). One-time cost: ~1–2s for 569 PNGs.
+        # Preload every input into a single contiguous tensor of
+        # shape (N, max_len, f_dim). One-time cost: ~1–2s for 569 clips.
+        # When USE_MFCC is True, loads .npy files from MFCC_DIR instead of
+        # PNG spectrograms from SPEC_DIR. Both produce identical shapes.
         n = len(self.records)
         self._cache = torch.empty((n, max_len, f_dim), dtype=torch.float32)
         for i in range(n):
-            png_path = self.records.iloc[i]["png_path"]
-            spec = load_png(png_path,
-                            target_height=f_dim,
-                            target_width=max_len)        # (f_dim, max_len)
-            self._cache[i] = torch.from_numpy(spec.T)    # (max_len, f_dim)
+            if USE_MFCC:
+                mfcc_path = self.records.iloc[i]["mfcc_path"]
+                feat = np.load(mfcc_path)                    # (f_dim, max_len)
+                self._cache[i] = torch.from_numpy(feat.T)    # (max_len, f_dim)
+            else:
+                png_path = self.records.iloc[i]["png_path"]
+                spec = load_png(png_path,
+                                target_height=f_dim,
+                                target_width=max_len)        # (f_dim, max_len)
+                self._cache[i] = torch.from_numpy(spec.T)    # (max_len, f_dim)
 
         # ── Per-clip normalisation (vectorised over the whole cache) ────
         # Mean/std along the time axis (dim=1) per clip per feature, then
