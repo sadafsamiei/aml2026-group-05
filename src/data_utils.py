@@ -482,7 +482,8 @@ class SpectrogramDataset(Dataset):
         self._cache = torch.empty((n, max_len, f_dim), dtype=torch.float32)
         for i in range(n):
             if USE_MFCC:
-                mfcc_path = self.records.iloc[i]["mfcc_path"]
+                audio_id = self.records.iloc[i]["audio_ID"]
+                mfcc_path = str(MFCC_DIR / f"{audio_id}.npy")
                 feat = np.load(mfcc_path)                    # (f_dim, max_len)
                 self._cache[i] = torch.from_numpy(feat.T)    # (max_len, f_dim)
             else:
