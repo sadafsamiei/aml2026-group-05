@@ -591,6 +591,11 @@ def main():
             baseline_test_f1=args.baseline_test_f1,
         )
         per_seed_summaries.append(summary)
+        # Free GPU memory between seeds to prevent hangs
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     # ── Aggregate ────────────────────────────────────────────────────────
     print("\n[3/4] Aggregating across seeds...")
