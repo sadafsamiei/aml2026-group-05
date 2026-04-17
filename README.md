@@ -190,7 +190,7 @@ INTER is the strongest class for both models. EXTEV and MOVE are the weakest —
   <strong>Right:</strong> Model 3 (d=32, L=1, drop=0.3) — early-stops within 16–21 epochs; val F1 peaks in first 2–6 epochs then degrades.
 </p>
 
-The contrast between the two panels is the clearest visual summary of the project's finding. Model 2 overfits slowly (train loss drops while val F1 stays flat). Model 3 converges and overfits fast (the tiny encoder learns what it can in a few epochs and then drifts). Neither model finds a regime where continued training improves generalisation — the classic signature of a data-limited, cross-participant task.
+The contrast between the two panels is the clearest visual summary of the project's finding. Model 2 overfits slowly (train loss drops while val F1 stays flat). Model 3 converges and overfits fast (the tiny encoder learns what it can in a few epochs and then drifts). Neither model finds continued training to be improving generalisation — the classic signature of a data-limited, cross-participant task.
 
 ---
 
@@ -243,3 +243,21 @@ Model 2 collapses heavily onto INTER (predicts INTER for the majority of EXTEV, 
 **Grayscale spectrograms from denoised audio** — clean acoustic content only (no axes or colorbar pixels). Native mel resolution (128 mel bins × T frames), resized to 128 × 230 inside the dataset.
 
 
+## Next Steps
+ 
+Our results show that the performance ceiling on this task is imposed by inter-child variance and data scale, not by model architecture or training recipe. The following directions target that bottleneck directly, in order of expected impact.
+ 
+### 1. Pretrained audio embeddings
+ 
+The single highest-leverage change. Models like wav2vec2, PANNs (CNN14), or YAMNet have learned speaker-invariant acoustic representations from hundreds of thousands of hours of diverse audio. Replacing our from-scratch mel spectrogram encoder with frozen pretrained embeddings would give the classifier access to features that are already robust to speaker variation — precisely the property our current models lack. 
+ 
+### 2. MFCC-based input features
+ 
+A lighter alternative to pretrained embeddings that stays fully within the from-scratch paradigm. MFCCs apply a decorrelating cosine transform to the mel spectrum, which partially removes the spectral envelope encoding speaker identity. Stacking MFCCs with their first and second temporal derivatives (Δ + ΔΔ) adds explicit dynamics that the Transformer currently has to learn from scratch.
+### 3. Cross-participant data augmentation
+ 
+Our current augmentation (SpecAugment) operates within each clip independently. A more targeted approach would be to augment across participants — for example, mixing spectrograms from different children within the same class (mixup) or applying pitch/formant perturbation to simulate speaker variability. The goal is to make the training distribution more representative of the acoustic variation the model will encounter at test time. This addresses the bottleneck more directly than SpecAugment, which only adds within-clip noise.
+ 
+### 4. Leave-one-participant-out (LOPO) evaluation
+ 
+Although our problem setting mandates fixed holdout for ≥5 participants, LOPO cross-validation across all 9 children would provide a much more robust estimate of cross-participant generalisation. Each fold holds out one child for test, one for val, and trains on the remaining 7. The mean macro-F1 across 9 folds would average out the idiosyncrasy of any single test child (currently child_6 dominates our entire test signal).
