@@ -182,7 +182,7 @@ INTER is the strongest class for both models. EXTEV and MOVE are the weakest —
 
 <p align="center">
   <img src="figures/audio_multiseed_20260416_230141_training_curves.png" alt="Model 2 grid-selected training curves" width="48%" />
-  <img src="figures/attn_multiseed_20260416_230142_training_curves.png" alt="Model 3 grid-selected training curves" width="48%" />
+  <img src="figures/audio_multiseed_20260416_230141_training_curves.png" alt="Model 3 grid-selected training curves" width="48%" />
 </p>
 
 <p align="center">
