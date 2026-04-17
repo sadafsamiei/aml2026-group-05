@@ -40,12 +40,12 @@ We formulate the task as a **4-class supervised classification** problem. Each e
 | # | Model | Status |
 |---|---|---|
 | 1 | Logistic Regression (MFCC features) | ⏳ In progress |
-| 2 | Audio-only Transformer (mean pooling) | ✅ Done (5 seeds × 2 conditions) |
-| 3 | Attentive Pooling Transformer (metadata query) | ✅ Done (5 seeds × 2 conditions) |
+| 2 | Audio-only Transformer (mean pooling) | ✅ Done |
+| 3 | Attentive Pooling Transformer (metadata query) | ✅ Done |
 
-**Model 2 (126,404 params)** — `input_proj(128→64)` → `TransformerEncoder(d=64, heads=4, L=2)` → masked mean pool → `Linear(64→4)`.
+**Model 2** — `input_proj(128→d)` → `TransformerEncoder(d, heads=4, L)` → masked mean pool → `Linear(d→4)`.
 
-**Model 3 (126,725 params)** — same encoder, replaces mean pooling with metadata-query attentive pooling. Age and gender are projected to a query vector that attends over frame embeddings via unscaled dot product, with a learned temperature scalar (`log_tau`, init 0 → τ=1) before softmax. An earlier version used `÷√d` scaling and `Tanh` on the metadata projection — that combination collapsed the attention to near-uniform at init (`mean_weight_std ≈ 0.00086` vs uniform proxy 0.00659). The current scoring restores usable dynamic range; see `models.py`.
+**Model 3** — same encoder, replaces mean pooling with metadata-query attentive pooling. Age and gender are projected to a query vector that attends over frame embeddings via unscaled dot product, with a learned temperature scalar (`log_tau`, init 0 → τ=1) before softmax.
 
 ---
 
@@ -59,9 +59,45 @@ We formulate the task as a **4-class supervised classification** problem. Each e
 | Val | child_2 | 171 |
 | Train | child_1, 3, 4, 5, 7, 8, 9 | 569 |
 
-**Metric**: macro-F1 (chance = 0.25 for 4 balanced classes).
+**Metric**: macro-F1 (chance = 0.25 for 4 classes).
 
-**Multi-seed reporting**: every Transformer number is mean ± std across 5 seeds (42, 123, 456, 789, 2024). σ_seed ≈ 0.025 on this task — single-seed comparisons are dominated by noise and are not used to draw conclusions.
+**Multi-seed reporting**: every Transformer number is mean ± std across 5 seeds (42, 123, 456, 789, 2024). σ_seed ≈ 0.02 on this task — single-seed comparisons are dominated by noise and are not used to draw conclusions.
+
+---
+
+## Hyperparameter Selection
+
+Per the problem setting, we tuned `num_layers`, `d_model`, `dropout`, and `lr` via grid search over 8 configurations, selecting on validation macro-F1. Grid search was run with preprocessing enabled (`USE_PER_CLIP_NORM=True`, `USE_SPECAUGMENT=True`).
+
+### Model 2 — AudioTransformer grid (sorted by val F1)
+
+| d_model | layers | dropout | lr | Val F1 |
+|---|---|---|---|---|
+| **64** | **2** | **0.5** | **1e-3** | **0.306** ← selected |
+| 64 | 2 | 0.3 | 5e-4 | 0.302 |
+| 128 | 2 | 0.3 | 5e-4 | 0.300 |
+| 64 | 2 | 0.3 | 1e-3 | 0.300 |
+| 32 | 1 | 0.3 | 1e-3 | 0.280 |
+| 128 | 3 | 0.3 | 5e-4 | 0.280 |
+| 32 | 1 | 0.5 | 1e-3 | 0.279 |
+| 128 | 3 | 0.5 | 5e-4 | 0.266 |
+
+The top 4 configs are within 0.006 of each other — all d=64, L=2. The grid confirms the architecture; higher dropout (0.5 vs 0.3) gives a marginal edge.
+
+### Model 3 — AttentivePooling grid (sorted by val F1)
+
+| d_model | layers | dropout | lr | Val F1 |
+|---|---|---|---|---|
+| **32** | **1** | **0.3** | **1e-3** | **0.286** ← selected |
+| 128 | 3 | 0.3 | 5e-4 | 0.254 |
+| 64 | 2 | 0.5 | 1e-3 | 0.250 |
+| 64 | 2 | 0.3 | 1e-3 | 0.245 |
+| 64 | 2 | 0.3 | 5e-4 | 0.229 |
+| 32 | 1 | 0.5 | 1e-3 | 0.222 |
+| 128 | 2 | 0.3 | 5e-4 | 0.219 |
+| 128 | 3 | 0.5 | 5e-4 | 0.218 |
+
+The smallest model (d=32, L=1, 26K params) won by a clear margin (+0.032 over the next). With attentive pooling, a simpler encoder overfits less — suggesting the attention mechanism itself adds enough capacity that the encoder should be kept minimal.
 
 ---
 
@@ -76,8 +112,8 @@ aml2026-group-05/
 │   └── train_utils.py     ← training loop (bf16 amp), evaluation, sanity checks
 └── scripts/
     ├── generate_spectrograms.py
-    ├── train_transformer_audio.py    ← Model 2 entry point
-    ├── train_transformer_attn.py     ← Model 3 entry point
+    ├── train_transformer_audio.py    ← Model 2 entry point + grid search
+    ├── train_transformer_attn.py     ← Model 3 entry point + grid search
     ├── train_multiseed.py            ← multi-seed wrapper for Models 2 and 3
     └── train_lr_baseline.py          ← Model 1 entry point (in progress)
 ```
@@ -90,16 +126,15 @@ aml2026-group-05/
 # Generate spectrograms (run once)
 python scripts/generate_spectrograms.py
 
-# Multi-seed runs — both models, both preprocessing conditions toggled in config.py
-python scripts/train_multiseed.py --model audio --seeds 42 123 456 789 2024 --use_existing_splits
-python scripts/train_multiseed.py --model attn  --seeds 42 123 456 789 2024 --use_existing_splits
-```
+# Grid search (selects best config on val F1)
+python scripts/train_transformer_audio.py --grid_search --use_existing_splits
+python scripts/train_transformer_attn.py  --grid_search --use_existing_splits
 
-Toggle preprocessing in `src/config.py`:
-
-```python
-USE_PER_CLIP_NORM = True   # per-clip mean/variance normalisation
-USE_SPECAUGMENT   = True   # train-only time + frequency masking
+# Final multi-seed runs with grid-selected configs
+python scripts/train_multiseed.py --model audio --seeds 42 123 456 789 2024 --use_existing_splits \
+    --d_model 64 --num_layers 2 --dropout 0.5 --lr 0.001 --batch_size 32
+python scripts/train_multiseed.py --model attn --seeds 42 123 456 789 2024 --use_existing_splits \
+    --d_model 32 --num_layers 1 --dropout 0.3 --lr 0.001 --batch_size 16
 ```
 
 ---
@@ -108,110 +143,92 @@ USE_SPECAUGMENT   = True   # train-only time + frequency masking
 
 **Protocol**: participant-disjoint holdout. All Transformer numbers are mean ± std across 5 seeds. Chance = 0.25.
 
-### Main ablation: 2 models × 2 preprocessing conditions
+### Final reported numbers (grid-selected hyperparameters)
 
-| Model | Preprocessing | Val macro-F1 | Test macro-F1 | Val→Test gap |
+| Model | Config | Params | Val F1 | Test F1 |
 |---|---|---|---|---|
-| 1 — Logistic Regression | — | TBD | TBD | TBD |
-| 2 — Audio Transformer (mean pool) | raw | 0.224 ± 0.008 | **0.231 ± 0.027** | −0.003 |
-| 2 — Audio Transformer (mean pool) | norm + SpecAugment | **0.288 ± 0.017** | 0.228 ± 0.007 | +0.060 |
-| 3 — Attentive Pooling (metadata query) | raw | 0.227 ± 0.022 | 0.224 ± 0.027 | +0.003 |
-| 3 — Attentive Pooling (metadata query) | norm + SpecAugment | 0.239 ± 0.028 | 0.213 ± 0.025 | +0.026 |
+| 1 — Logistic Regression | TBD | TBD | TBD | TBD |
+| **2 — Audio Transformer** | d=64, L=2, drop=0.5 | 126K | 0.270 ± 0.022 | **0.249 ± 0.020** |
+| **3 — Attentive Pooling** | d=32, L=1, drop=0.3 | 26K | 0.252 ± 0.045 | **0.221 ± 0.013** |
+| Chance | — | — | 0.250 | 0.250 |
 
-### Statistical comparisons (test macro-F1)
+**Δ Model 2 vs Model 3**: +0.028, pooled σ ≈ 0.024, |Δ|/σ ≈ 1.2 — within noise. The two architectures remain statistically indistinguishable.
 
-| Comparison | Δ | pooled σ | \|Δ\|/σ | Conclusion |
+### Preprocessing ablation (FULL preset: d=64, L=2, drop=0.3)
+
+| Model | Preprocessing | Val F1 | Test F1 | Val→Test gap |
 |---|---|---|---|---|
-| Model 2 raw vs Model 3 raw | +0.007 | 0.038 | 0.18 | indistinguishable |
-| Model 2 norm+aug vs Model 3 norm+aug | +0.015 | 0.026 | 0.58 | indistinguishable |
-| Model 2 raw vs Model 2 norm+aug | −0.003 | 0.028 | 0.11 | preprocessing did not help test |
-| Model 3 raw vs Model 3 norm+aug | −0.011 | 0.035 | 0.31 | preprocessing did not help test |
+| 2 — Audio Transformer | raw | 0.224 ± 0.008 | 0.231 ± 0.027 | −0.003 |
+| 2 — Audio Transformer | norm + SpecAugment | 0.288 ± 0.017 | 0.228 ± 0.007 | +0.060 |
+| 3 — Attentive Pooling | raw | 0.227 ± 0.022 | 0.224 ± 0.027 | +0.003 |
+| 3 — Attentive Pooling | norm + SpecAugment | 0.239 ± 0.028 | 0.213 ± 0.025 | +0.026 |
 
-Every comparison sits well inside one standard deviation. The honest mean test macro-F1 across all 4 conditions is ≈ **0.224**, slightly below chance.
+Preprocessing lifts val F1 but not test F1 — the val→test gap widens from ≈0 to +0.06. This is the key diagnostic: inter-child variance, not feature quality, is the bottleneck.
 
-### Per-class TEST macro-F1, all conditions
+### Per-class TEST macro-F1 (grid-selected configs)
 
-| Class | M2 raw | M2 norm+aug | M3 raw | M3 norm+aug |
-|---|---|---|---|---|
-| EXTEV | 0.092 ± 0.074 | 0.104 ± 0.036 | 0.111 ± 0.117 | 0.171 ± 0.052 |
-| INTER | 0.270 ± 0.077 | 0.423 ± 0.020 | 0.312 ± 0.032 | 0.257 ± 0.114 |
-| MOVE  | 0.231 ± 0.129 | 0.228 ± 0.044 | 0.173 ± 0.130 | 0.114 ± 0.038 |
-| PLTOY | 0.332 ± 0.129 | 0.157 ± 0.062 | 0.300 ± 0.076 | 0.308 ± 0.098 |
+| Class | Model 2 | Model 3 |
+|---|---|---|
+| EXTEV | 0.194 ± 0.072 | 0.147 ± 0.043 |
+| INTER | 0.401 ± 0.021 | 0.318 ± 0.044 |
+| MOVE | 0.220 ± 0.074 | 0.093 ± 0.045 |
+| PLTOY | 0.183 ± 0.084 | 0.326 ± 0.036 |
 
-INTER (largest training class) is consistently strongest. EXTEV is consistently weakest. Preprocessing tightens per-seed variance noticeably (e.g. M2 EXTEV σ: 0.074 → 0.036) but does not improve the means.
+INTER is the strongest class for both models. EXTEV and MOVE are the weakest — both are acoustically heterogeneous categories where the child's vocalisation carries little class-specific information.
 
 ---
 
-### Training curves overlay (5 seeds)
-
-**Model 2 — raw spectrograms:**
-
-![Model 2 raw training curves](figures/audio_multiseed_20260411_153341_training_curves.png)
-
-**Model 2 — per-clip norm + SpecAugment:**
-
-![Model 2 norm+aug training curves](figures/audio_multiseed_20260411_165207_training_curves.png)
-
-The raw runs show train loss decreasing slowly while val F1 stays flat near 0.2. The preprocessed runs show train loss dropping much more aggressively (~1.5 → ~0.4) while val F1 climbs only modestly to ~0.25–0.30 — and test F1 does not improve. Preprocessing made the model fit the training data much better without improving generalisation: the textbook overfitting signature.
-
-**Model 3 — per-clip norm + SpecAugment:**
-
-![Model 3 norm+aug training curves](figures/attn_multiseed_20260411_172247_training_curves.png)
-
-Most Model 3 + preprocessing seeds early-stop within 20 epochs because val F1 peaks within the first few epochs and then degrades. The model is finding a basin quickly and then drifting off it.
-
----
-
-### Test confusion matrices (5 seeds, mean ± std per cell)
+### Training curves (grid-selected configs, 5 seeds)
 
 <p align="center">
-  <img src="figures/audio_multiseed_20260411_165207_cm_test.png" alt="Model 2 norm+aug test CM" width="45%" />
-  <img src="figures/attn_multiseed_20260411_172247_cm_test.png" alt="Model 3 norm+aug test CM" width="45%" />
+  <img src="figures/audio_multiseed_20260416_230141_training_curves.png" alt="Model 2 grid-selected training curves" width="48%" />
+  <img src="figures/attn_multiseed_20260416_230142_training_curves.png" alt="Model 3 grid-selected training curves" width="48%" />
 </p>
 
 <p align="center">
-  <strong>Left:</strong> Model 2 — preprocessed &nbsp;&nbsp;&nbsp;
-  <strong>Right:</strong> Model 3 — preprocessed
+  <strong>Left:</strong> Model 2 (d=64, L=2, drop=0.5) — trains 25–53 epochs; val F1 oscillates around chance. &nbsp;&nbsp;
+  <strong>Right:</strong> Model 3 (d=32, L=1, drop=0.3) — early-stops within 16–21 epochs; val F1 peaks in first 2–6 epochs then degrades.
 </p>
 
-Model 2 collapses heavily onto INTER (predicts INTER for ~63% of EXTEV, INTER, and PLTOY examples). Model 3 distributes its predictions more evenly across columns but remains biased toward PLTOY. Neither matrix shows a strong diagonal — neither model has learned class-specific features that survive the participant shift.
+The contrast between the two panels is the clearest visual summary of the project's finding. Model 2 overfits slowly (train loss drops while val F1 stays flat). Model 3 converges and overfits fast (the tiny encoder learns what it can in a few epochs and then drifts). Neither model finds a regime where continued training improves generalisation — the classic signature of a data-limited, cross-participant task.
 
 ---
 
-### Attention weight diagnostic (Model 3 + preprocessing, 5 seeds, EXTEV)
+### Test confusion matrices (grid-selected configs, 5 seeds)
 
-![Model 3 attention overlay (norm+aug)](figures/attn_multiseed_20260411_172247_attn_overlay_EXTEV.png)
+<p align="center">
+  <img src="figures/audio_multiseed_20260416_230141_cm_test.png" alt="Model 2 grid-selected test CM" width="45%" />
+  <img src="figures/attn_multiseed_20260416_230142_cm_test.png" alt="Model 3 grid-selected test CM" width="45%" />
+</p>
 
-**This is the most informative single figure in the project.** After the attention fix and with preprocessing enabled, **3 of 5 seeds produce sharp, narrow attention peaks** with weights up to 0.47 — more than 25× the uniform reference (0.0189). All five seeds reach `is_non_uniform: True` with `mean_weight_std ≈ 0.035` (≈ 5× the uniform proxy). The attention mechanism is now reliably learning to focus.
+<p align="center">
+  <strong>Left:</strong> Model 2 &nbsp;&nbsp;&nbsp;
+  <strong>Right:</strong> Model 3
+</p>
 
-But the test F1 in this exact condition is **0.213 ± 0.025** — the worst of the four conditions. The model is sharpening attention onto frames that fit the validation child but happen to hurt the test child. This cleanly separates two questions that are usually conflated:
-
-1. *Does the attention mechanism work mechanically?* **Yes** — clearly non-uniform.
-2. *Does it produce class-discriminative features that generalise?* **No** — at this data scale, sharper attention leads to worse cross-participant generalisation, not better.
+Model 2 collapses heavily onto INTER (predicts INTER for the majority of EXTEV, INTER, and PLTOY examples). Model 3 distributes predictions more evenly but remains biased toward PLTOY. Neither matrix shows a strong diagonal — neither model has learned class-specific features that survive the participant shift.
 
 ---
 
 ## Interpretation
 
-**The two Transformer architectures are statistically indistinguishable.** Across 5 seeds × 2 preprocessing conditions, every Model 2 vs Model 3 comparison has `|Δ|/σ < 0.6`. We cannot reject the null hypothesis that mean pooling and metadata-query attentive pooling are equivalent for this task at this data scale.
+**The two Transformer architectures are statistically indistinguishable.** After grid-based hyperparameter selection and 5-seed evaluation, Model 2 achieves test F1 = 0.249 ± 0.020 and Model 3 achieves 0.221 ± 0.013. The difference (|Δ|/σ ≈ 1.2) is within noise. We cannot reject the null hypothesis that mean pooling and metadata-query attentive pooling are equivalent at this data scale.
 
-**Preprocessing did not help test performance.** Per-clip mean/variance normalisation and SpecAugment lifted Model 2 val from 0.224 to 0.288 (+0.064) and tightened seed-to-seed variance, but test F1 did not move (0.231 → 0.228 for Model 2; 0.224 → 0.213 for Model 3). The val→test gap widened from ≈ 0 to +0.06.
+**Hyperparameter tuning did not break the ceiling.** The grid search explored architectures from 26K to 648K parameters. Model 2's best config landed at chance on test (0.249 vs 0.250). Model 3's best config (d=32, L=1) is 5× smaller than the default preset and still below chance. No configuration exceeded chance by a meaningful margin.
 
-**The widening val→test gap is the key diagnostic.** It shows that the bottleneck is *not* the input representation. Better preprocessing helps the model fit the *specific* validation child more accurately, but those improvements do not transfer to the *other* held-out child. The two children differ enough that features learned to fit one do not generalise to the other. This is direct evidence that **inter-child variance is the dominant source of test error**, not feature-extraction quality or model capacity.
+**Preprocessing helped val but not test.** Per-clip normalisation and SpecAugment lifted Model 2 val from 0.224 to 0.288 (+0.064) but test F1 did not move (0.231 → 0.228). The val→test gap widened from ≈0 to +0.06. This directly demonstrates that **inter-child variance is the dominant source of test error**, not input representation quality.
 
-**The attention fix made the mechanism functional but not helpful.** The diagnostic above shows clearly non-uniform, confident focus across all 5 seeds in the preprocessed Model 3 condition (3 with sharp peaks). Yet that condition has the worst test F1 of any tested. "The mechanism works" and "the mechanism helps" are different questions; at this data scale only the first holds.
+**The grid search picked different architectures for each model — and this is informative.** Model 2's best is d=64 L=2 with higher dropout; Model 3's best is d=32 L=1 (5× fewer parameters). The attentive pooling mechanism adds enough model capacity that the encoder should be kept minimal. Despite this, neither model generalises to the unseen test child.
 
-**EXTEV is consistently the hardest class** (mean test F1 ≈ 0.12 across all conditions). It is the most acoustically heterogeneous category, defined by reactions to a wide range of external stimuli rather than a consistent vocalisation pattern.
+**EXTEV is consistently the hardest class** (mean test F1 ≈ 0.15–0.19). It covers reactions to diverse external stimuli with no consistent acoustic signature.
 
-**Implication for the experimental design.** The combination of (a) only 7 training children, (b) only 1 held-out test child, and (c) ~570 training examples is too restrictive for any architecture or preprocessing strategy in our problem-setting budget to achieve reliable above-chance generalisation. A fairer test of the architectural question would require more participants or LOPO cross-validation, neither of which is permitted under the strict problem setting we are evaluated against. Within those constraints, the negative result is the honest finding.
+**Implication for the experimental design.** The combination of only 7 training children, only 1 held-out test child, and ~570 training examples is too restrictive for any architecture or preprocessing strategy to achieve reliable above-chance generalisation. A fairer test of the architectural question would require more participants or pretrained audio representations — neither of which is permitted under the strict problem setting.
 
 ---
 
 ## Key Design Decisions
 
-**Evaluation Protocol** — The 9 children contributed very uneven amounts of data, so an exact 70/15/15 split by clips was not possible without mixing participants. To keep the evaluation participant-disjoint and still make validation and test meaningful, the two largest and most balanced children were used for validation and test, while the other 7 were used for training. Although this gives a 56/17/27 clip split instead of a perfect 70/15/15, it avoids missing classes in the held-out sets and makes the evaluation fairer.
-
-**Participant-disjoint evaluation** — children are assigned to splits once and never moved.
+**Evaluation protocol** — The 9 children contributed very uneven amounts of data (11 to 269 clips each), so an exact 70/15/15 split by clip count was not achievable under the participant-disjoint constraint. To keep evaluation participant-disjoint and still ensure all 4 classes appear in every split, the two largest and most class-balanced children were assigned to test and val. This yields a 56/17/27 clip-count ratio instead of a perfect 70/15/15. The deviation is documented and justified: any participant-disjoint split of 9 unequal-sized children cannot exactly match the target ratio, and using smaller children for held-out splits would risk missing entire classes.
 
 **Macro-F1 metric** — equally penalises poor recall on any class. Accuracy would be misleading because predicting INTER for everything yields ~30% accuracy.
 
@@ -219,6 +236,10 @@ But the test F1 in this exact condition is **0.213 ± 0.025** — the worst of t
 
 **Multi-seed reporting (n=5)** — every Transformer result is mean ± std across 5 seeds. Single-seed comparisons on n_test = 269 are dominated by sampling noise.
 
-**Per-clip normalisation + SpecAugment as opt-in ablation** — toggled by `USE_PER_CLIP_NORM` and `USE_SPECAUGMENT` in `config.py`. Norm is applied vectorised over the cached tensor; SpecAugment is applied stochastically inside `__getitem__`, train-only.
+**Hyperparameter selection on val only** — the grid search ranked 8 configurations by val macro-F1. The grid-selected config was then retrained with 5 seeds for the final reported test number. Test was not used for model selection.
+
+**Per-clip normalisation + SpecAugment as opt-in ablation** — toggled by `USE_PER_CLIP_NORM` and `USE_SPECAUGMENT` in `config.py`. The ablation results demonstrate that preprocessing helps val but not test.
 
 **Grayscale spectrograms from denoised audio** — clean acoustic content only (no axes or colorbar pixels). Native mel resolution (128 mel bins × T frames), resized to 128 × 230 inside the dataset.
+
+
