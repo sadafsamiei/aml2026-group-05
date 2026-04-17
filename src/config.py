@@ -107,7 +107,7 @@ HPARAM_DEFAULTS = HPARAM_FULL
 # spectrogram PNGs from SPEC_DIR — this is the spec-compliant configuration.
 # When True, it loads MFCC .npy files from MFCC_DIR instead. Both produce
 # (MAX_LEN, F_DIM) tensors so no other config changes are needed.
-USE_MFCC = False
+USE_MFCC = True
 
 # Per-clip mean/variance normalisation of the cached spectrogram tensor.
 # Subtracts the per-clip mean and divides by the per-clip std along the

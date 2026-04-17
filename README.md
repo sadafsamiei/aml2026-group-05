@@ -143,8 +143,6 @@ python scripts/train_multiseed.py --model attn --seeds 42 123 456 789 2024 --use
 # MFCC ablation: set USE_MFCC=True in config.py, then run the same commands above
 ```
 
-Hardware: NVIDIA A10 (8 GB) with PyTorch 2.4 + CUDA 12.1, bf16 mixed precision.
-
 ---
 
 ## Results
@@ -271,24 +269,4 @@ MFCCs apply a decorrelating cosine transform to the mel spectrum, which partiall
 
 **Grayscale spectrograms from denoised audio** — clean acoustic content only (no axes or colorbar pixels). Native mel resolution (128 mel bins × T frames), resized to 128 × 230 inside the dataset.
 
-**bf16 mixed precision on GPU** — bf16 has fp32 dynamic range (no GradScaler needed), ~1.5–2× throughput on the A10.
-
-**RAM-cached inputs** — entire dataset (~120 MB) preloaded at dataset construction. Zero per-epoch file I/O.
-
 ---
-
-## Next Steps
-
-Our results show that the performance ceiling is imposed by inter-child variance and data scale, not by model architecture, hyperparameters, preprocessing, or input features. The following directions target that bottleneck directly.
-
-### 1. Pretrained audio embeddings
-
-The single highest-leverage change. Models like wav2vec2, PANNs (CNN14), or YAMNet have learned speaker-invariant acoustic representations from hundreds of thousands of hours of diverse audio. Replacing our from-scratch encoder with frozen pretrained embeddings would give the classifier access to features that are already robust to speaker variation. We would cache embeddings once per clip and train only the pooling + classifier head, keeping the Model 2 vs Model 3 comparison intact. Based on the literature, we expect this to lift test F1 from ~0.25 to the 0.40–0.55 range — high enough to actually resolve the architectural comparison.
-
-### 2. Cross-participant augmentation
-
-Our current augmentation (SpecAugment) operates within each clip independently. A more targeted approach would augment across participants — mixing spectrograms from different children within the same class (mixup) or applying pitch/formant perturbation to simulate speaker variability. This addresses the bottleneck more directly than SpecAugment, which only adds within-clip noise.
-
-### 3. Leave-one-participant-out (LOPO) evaluation
-
-LOPO cross-validation across all 9 children would provide a more robust estimate of cross-participant generalisation. Each fold holds out one child for test, averaging out the idiosyncrasy of any single test child. This would not improve the model but would produce a fairer performance estimate and reveal whether the near-chance result is specific to child_6 or universal.
