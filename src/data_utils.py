@@ -296,8 +296,8 @@ def build_splits(df: pd.DataFrame, protocol: str,
         n_test   = max(1, round(n * test_frac))
         n_val    = max(1, round(n * val_frac))
 
-        train, temp = train_test_split(df, test_size=0.30, random_state=RANDOM_SEED,  stratify=df["child"])
-        val, test   = train_test_split(temp, test_size=0.50, random_state=RANDOM_SEED, stratify=temp["child"])
+        train, temp = train_test_split(df, test_size=0.44, random_state=RANDOM_SEED, stratify=df["child"])
+        val, test   = train_test_split(temp, test_size=0.614, random_state=RANDOM_SEED, stratify=temp["child"])
 
         # Critical: reset index so dataset __getitem__ reads correct rows
         train = train.reset_index(drop=True)
