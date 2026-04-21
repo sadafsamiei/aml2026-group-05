@@ -581,7 +581,12 @@ aml2026-group-05/
 │   ├── config.py          ← paths, hyperparameters, preprocessing flags
 │   ├── data_utils.py      ← splits, datasets, per-clip norm, SpecAugment
 │   ├── models.py          ← AudioTransformer + AttentivePoolingTransformer
-│   └── train_utils.py     ← training loop, evaluation, sanity checks
+│   └── train_utils.py     ← training loop, evaluation, 
+├── experiments/
+│    ├── class_by_language.py
+│    ├── cm_comparison.py
+│    ├── ensemble_seeds.py
+sanity checks
 └── scripts/
     ├── generate_spectrograms.py
     ├── train_transformer_audio.py  ← Model 2 + grid search
