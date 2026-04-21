@@ -293,6 +293,64 @@ genuinely better at identifying social-interaction acoustic patterns
 once the encoder has enough capacity to pass wav2vec2 information
 through.
 
+**The confusion matrix reveals an INTER-prediction bias in Model 3.**
+On clips whose true class is *not* INTER, Model 3 predicts INTER 56% of
+the time versus 33% for Model 2 (+23 percentage points). The same
+pattern holds row by row — from EXTEV, MOVE, and PLTOY, Model 3's
+largest off-diagonal is always the INTER column (0.62, 0.49, 0.57
+respectively). This bias has two partial explanations working together
+(see Limitations for the language confound). First, the Tagalog
+training prior: our Tagalog training children have 46.9% INTER clips,
+almost 2× the Shipibo rate of 22.5%, and the test child is Tagalog
+too. Second, attention concentration on single frames that carry
+INTER-like signatures (see below). Neither explanation alone accounts
+for Model 3's 57.4% INTER prediction rate — the Tagalog prior predicts
+46.9% and the true rate is 29.4%. The +0.027 macro-F1 gain is real —
+macro-F1 penalises class-skew predictions, so the gain cannot be
+explained by bias alone — but it comes at the cost of EXTEV, MOVE, and
+PLTOY precision.
+
+### Attention mechanism behaviour — does the pooling actually attend?
+
+Before claiming that Model 3's wav2vec2 win comes from attention doing
+real work, we inspected the mechanism directly. For each val clip we
+computed the number of top-weighted frames needed to accumulate a given
+fraction of the total attention mass. This metric is scale-free and
+makes "concentrated vs distributed" attention directly comparable
+across configurations.
+
+| Attention mass threshold | d=32 mel (median frames) | d=192 wav2vec2 (median frames) |
+|---|---|---|
+| 50% | 3 | **1** |
+| 80% | 7 | **1** |
+| 95% | 17 | **1** |
+
+The mechanism operates in a qualitatively different regime on each
+feature type. On mel, attention is genuinely distributed: a median of
+17 frames carries 95% of the mass, with soft peaks spanning 3–5 frames
+visible in per-clip plots. On wav2vec2, the mechanism concentrates so
+sharply that a single frame carries 95% of the mass for the majority
+of clips. Attention is effectively acting as a learned frame-selector
+rather than a weighted averager.
+
+**Verification that this is not a temperature runaway.** The learned
+temperature τ = exp(log_tau) (see Key Design Decisions) was 0.67–0.96
+across all 5 wav2vec2 seeds — every seed learned τ *below* the init
+of 1.0, meaning the model was actively trying to *soften* attention.
+The concentration therefore comes from large query-key dot-product
+magnitudes at d=192, not from τ drift. This is the flip side of the
+opposite problem on mel at d=32, where dot-product scores are small
+enough that softmax approaches uniform and attentive pooling becomes
+equivalent to mean pooling.
+
+The wav2vec2 concentration is consistent with wav2vec2's internal
+design: each output frame already encodes a ~25 ms window of
+contextual audio via the pretrained model's own self-attention. A
+single wav2vec2 frame is therefore already a rich local representation,
+and "picking one discriminative frame" may be a reasonable strategy —
+distinct from "weighting a region," which is the mechanism's behaviour
+on mel.
+
 ### Preprocessing ablation (FULL preset: d=64, L=2, drop=0.3, mel spectrogram)
 
 | Model | Preprocessing | Val F1 | Test F1 | Val→Test gap |
@@ -342,16 +400,22 @@ averages (0.263, 0.278, 0.300, 0.259) locates the optimum clearly at
 4:1 compression: larger encoders overfit, smaller ones underfit.
 
 **Step 4 — What the flip means: features and architecture interact.**
-On mel spectrograms the attentive pooling mechanism cannot find anything
-useful to weight — the frame-level representations do not carry
-sufficiently discriminative information for selective pooling to
-outperform simple averaging. On wav2vec2, which encodes rich
-phonetic and prosodic structure at every frame, the attentive
-mechanism can identify diagnostic regions and the gain becomes
-visible. This is consistent with the per-class breakdown: Model 3's
-advantage on wav2vec2 is concentrated in the INTER class (+0.140 F1),
-the class most likely to have localised acoustic signatures (turn-taking,
-vocal response patterns) that benefit from selective pooling.
+On mel spectrograms the attentive pooling mechanism cannot concentrate
+— dot-product scores are small at d=32, softmax approaches uniform,
+and attention reduces to mean pooling. On wav2vec2, the opposite
+regime emerges: at d=192 the scores are large enough that softmax
+nearly saturates, concentrating 95% of the attention mass on a single
+frame per clip (median across the val set, versus 17 frames on mel).
+The mechanism is therefore doing qualitatively different work in each
+regime — averaging-like on mel, frame-selection-like on wav2vec2 —
+with the wav2vec2 behaviour appropriate because each wav2vec2 frame
+already encodes ~25 ms of contextual audio.
+
+This is consistent with the per-class breakdown: Model 3's advantage
+on wav2vec2 is concentrated in the INTER class (+0.140 F1), the class
+most likely to have localised acoustic signatures (turn-taking, vocal
+response patterns) that benefit from selective pooling rather than
+averaging.
 
 The attentive pooling mechanism is *capacity-sensitive* on the encoder
 side (it needs enough dims to preserve wav2vec2 information) and
@@ -379,6 +443,133 @@ MOVE collapses to F1 = 0.000 in three of five seeds for Model 3 — the
 attentive mechanism seems to actively suppress whatever weak diagnostic
 signal MOVE does carry on mel features. On wav2vec2 both EXTEV and MOVE
 recover somewhat for both models.
+
+---
+
+## Limitations
+
+### Language is perfectly confounded with child identity, and val ≠ test language
+
+Every participant in the dataset is monolingual, and the language
+distribution across our splits is:
+
+| Child | Language | Split |
+|---|---|---|
+| child_1, child_3 | Shipibo | train |
+| child_4, child_5 | Tagalog | train |
+| child_7, child_8, child_9 | Vietnamese | train |
+| **child_2** | **Shipibo** | **val** |
+| **child_6** | **Tagalog** | **test** |
+
+Two independent language-related confounds arise from this structure:
+
+1. **Language is perfectly confounded with speaker identity.** No child
+   speaks more than one language, so we cannot separate "a language
+   effect" from "a speaker effect" in any result. When we hold out
+   child_6, we simultaneously hold out Tagalog.
+
+2. **The val split and the test split speak different languages.** Val
+   is 100% Shipibo; test is 100% Tagalog. Every hyperparameter in this
+   README (d_model, num_layers, dropout, learning rate, early-stopping
+   epoch) was selected on Shipibo validation performance, then reported
+   on Tagalog test data. A feature, filter, or attention pattern that
+   improves Shipibo val F1 may or may not transfer to Tagalog test — we
+   have no direct signal. This explains the consistent val→test gap of
+   +0.02 to +0.08 across our runs: the models genuinely improve on
+   Shipibo during training but do not necessarily improve on Tagalog.
+
+Both effects are consequences of the dataset and the
+participant-disjoint holdout protocol we chose. We accept them because
+the alternatives (random splits, same-child-in-train-and-val) would be
+worse in other ways — random splits leak speaker identity, and same-
+child-in-val would not test generalisation at all.
+
+### The training distribution differs substantially across languages
+
+Class proportions computed within each language's training clips:
+
+| Class  | Shipibo (n=142) | Tagalog (n=145) | Vietnamese (n=282) |
+|---|---|---|---|
+| EXTEV  | 22.5% | 22.1% | 28.4% |
+| INTER  | 22.5% | **46.9%** | 33.0% |
+| MOVE   | 26.8% | 21.4% | 22.0% |
+| PLTOY  | 28.2% | **9.7%**  | 16.7% |
+
+Tagalog training children produce INTER at 2.08× the Shipibo rate, and
+PLTOY at one-third the Shipibo rate. Because the test child is Tagalog,
+any model that learns Tagalog-specific acoustic cues and associates them
+with these Tagalog class priors will over-predict INTER and under-predict
+PLTOY on the test set — independently of whether it has learned any
+context-specific acoustic features.
+
+### Implication for the Model 3 INTER-prediction bias
+
+The Model 3 INTER-prediction bias observed in the confusion matrix
+(57.4% of test predictions are INTER, versus a true rate of 29.4%) is
+therefore better understood as the combination of two effects rather
+than a single cause:
+
+1. **Training-prior effect.** The Tagalog training base rate is 46.9%
+   INTER. A well-calibrated model on Tagalog test data would predict
+   INTER near this rate.
+2. **Attention-concentration effect.** Model 3's attentive pooling
+   concentrates 95% of its attention mass on a single frame per clip
+   (see Results → Attention mechanism behaviour); when that frame
+   carries an INTER-like signature, the whole clip is classified as
+   INTER.
+
+Model 2 predicts INTER at 31.1%, close to the true test rate of 29.4% —
+it does *not* show this bias. Model 3 predicts INTER at 57.4%,
+exceeding even the Tagalog prior, which means the attention mechanism
+adds roughly +10 percentage points of bias on top of what the
+training-distribution prior would explain. Neither effect alone
+accounts for the observed behaviour; together they do.
+
+### What cannot be claimed
+
+Given the confounds above, the following claims would be unsupported by
+our data and should not be made:
+
+- *"Model 3 generalises across languages."* We never tested this
+  because the val and test languages are disjoint and monolingual.
+- *"The attention mechanism identifies universal acoustic signatures of
+  social interaction."* The INTER-class advantage may be partly
+  language-specific or Tagalog-prior-specific.
+- *"Model 3 is robust to speaker shift."* The single held-out speaker
+  is also a single held-out language.
+- *"Hyperparameters were selected for the target language."* They were
+  selected on Shipibo validation, then reported on Tagalog test.
+
+### What the protocol does support
+
+- Within the constraint of this dataset and its participant-disjoint
+  holdout, Model 3 with wav2vec2 (d=192, L=1) macro-F1s above chance
+  more reliably than Model 2 with wav2vec2 across 5 seeds.
+- The Model 2 / Model 3 comparison flips sign across feature types
+  (Model 2 wins on mel, Model 3 wins on wav2vec2), and the flip is
+  reproducible.
+- The attention mechanism behaves qualitatively differently across
+  feature types (frame-averaging vs single-frame selection), which is
+  an architectural finding independent of the language confound.
+- The Model 3 INTER prediction bias exceeds what the Tagalog training
+  prior alone predicts, so the attention mechanism contributes
+  identifiable behaviour over and above distributional memorisation.
+
+### Secondary limitations
+
+- **Small held-out test set (n=269 from a single child)** means
+  σ_seed ≈ 0.016–0.020 on the reported macro-F1. Differences of
+  ≈ 0.03 between configurations should be treated as suggestive, not
+  statistically established.
+- **Frozen wav2vec2 embeddings.** A natural follow-up would be partial
+  fine-tuning of the last 1–2 wav2vec2 layers; this was out of scope.
+- **Low-cardinality metadata query.** Age and gender produce at most
+  10 distinct query vectors across all 1009 clips, limiting what the
+  attentive pooling mechanism can condition on. Adding language would
+  triple this to 30, but on this dataset language is collinear with
+  child identity, so adding it would effectively reintroduce child_id
+  as a feature — a confound we explicitly excluded on privacy and
+  leakage grounds.
 
 ---
 
