@@ -127,27 +127,40 @@ if USE_PRETRAINED:
 # time axis. Removes loudness/timbre drift across children, which is the
 # dominant nuisance variable in participant-disjoint evaluation.
 # Vectorised, applied once at dataset construction.
-USE_PER_CLIP_NORM = False
+USE_PER_CLIP_NORM = True
 
 # SpecAugment (time + frequency masking) applied train-only inside
 # __getitem__. Default values are conservative for short clips.
-USE_SPECAUGMENT     = False
+USE_SPECAUGMENT = not USE_PRETRAINED
 SPECAUG_TIME_MASKS  = 2     # number of time bands to mask
 SPECAUG_TIME_WIDTH  = 25    # max width (frames) of each time band
 SPECAUG_FREQ_MASKS  = 2     # number of frequency bands to mask
 SPECAUG_FREQ_WIDTH  = 12    # max width (mel bins) of each freq band
 
 # Hyperparameter grid (used with --grid_search flag)
-HPARAM_GRID = [
-    {"d_model": 32,  "num_layers": 1, "dropout": 0.3, "lr": 1e-3,  "batch_size": 16},
-    {"d_model": 32,  "num_layers": 1, "dropout": 0.5, "lr": 1e-3,  "batch_size": 16},
-    {"d_model": 64,  "num_layers": 2, "dropout": 0.3, "lr": 1e-3,  "batch_size": 32},
-    {"d_model": 64,  "num_layers": 2, "dropout": 0.5, "lr": 1e-3,  "batch_size": 32},
-    {"d_model": 64,  "num_layers": 2, "dropout": 0.3, "lr": 5e-4,  "batch_size": 32},
-    {"d_model": 128, "num_layers": 2, "dropout": 0.3, "lr": 5e-4,  "batch_size": 32},
-    {"d_model": 128, "num_layers": 3, "dropout": 0.3, "lr": 5e-4,  "batch_size": 32},
-    {"d_model": 128, "num_layers": 3, "dropout": 0.5, "lr": 5e-4,  "batch_size": 32},
-]
+if USE_PRETRAINED:
+    HPARAM_GRID = [
+        {"d_model": 64,  "num_layers": 1, "dropout": 0.3, "lr": 1e-3, "batch_size": 16},
+        {"d_model": 128, "num_layers": 1, "dropout": 0.3, "lr": 1e-3, "batch_size": 16},
+        {"d_model": 128, "num_layers": 1, "dropout": 0.5, "lr": 1e-3, "batch_size": 16},
+        {"d_model": 128, "num_layers": 2, "dropout": 0.5, "lr": 5e-4, "batch_size": 16},
+        {"d_model": 192, "num_layers": 1, "dropout": 0.3, "lr": 5e-4, "batch_size": 16},
+        {"d_model": 192, "num_layers": 1, "dropout": 0.5, "lr": 5e-4, "batch_size": 16},
+        {"d_model": 192, "num_layers": 2, "dropout": 0.5, "lr": 5e-4, "batch_size": 16},
+        {"d_model": 256, "num_layers": 1, "dropout": 0.5, "lr": 5e-4, "batch_size": 16},
+    ]
+else:
+    HPARAM_GRID = [
+        {"d_model": 32,  "num_layers": 1, "dropout": 0.3, "lr": 1e-3, "batch_size": 16},
+        {"d_model": 32,  "num_layers": 1, "dropout": 0.5, "lr": 1e-3, "batch_size": 16},
+        {"d_model": 64,  "num_layers": 2, "dropout": 0.3, "lr": 1e-3, "batch_size": 32},
+        {"d_model": 64,  "num_layers": 2, "dropout": 0.5, "lr": 1e-3, "batch_size": 32},
+        {"d_model": 64,  "num_layers": 2, "dropout": 0.3, "lr": 5e-4, "batch_size": 32},
+        {"d_model": 128, "num_layers": 2, "dropout": 0.3, "lr": 5e-4, "batch_size": 32},
+        {"d_model": 128, "num_layers": 3, "dropout": 0.3, "lr": 5e-4, "batch_size": 32},
+        {"d_model": 128, "num_layers": 3, "dropout": 0.5, "lr": 5e-4, "batch_size": 32},
+    ]
+
 
 RANDOM_SEED = 42
 

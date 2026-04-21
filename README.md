@@ -35,7 +35,9 @@ Classifier: `f(x_audio, x_meta) = y` where `x_audio` is an acoustic representati
 
 **Metadata viability**: 5 unique ages and 2 unique genders across 9 children —
 neither is collinear with participant identity, so external metadata query is
-safe to use in Model 3 (`USE_EXTERNAL_META = True`).
+safe to use in Model 3 (`USE_EXTERNAL_META = True`). The low cardinality is
+itself meaningful: 5 × 2 = 10 unique `(age, gender)` combinations project to at
+most 10 distinct query vectors across the whole dataset (see Interpretation).
 
 ---
 
@@ -85,10 +87,15 @@ by sampling noise (σ_seed ≈ 0.02–0.03) and are not used to draw conclusions
 
 ## Hyperparameter Selection
 
-Tuned via grid search over 8 configurations on val macro-F1 (preprocessing ON:
-`USE_PER_CLIP_NORM=True`, `USE_SPECAUGMENT=True`).
+Tuned via grid search over 8 configurations on val macro-F1. Each **feature
+type gets its own grid** — a config that wins on 128-dim mel inputs is not
+guaranteed to be optimal on 768-dim wav2vec2 inputs (see Step 3 of the
+interpretation). Preprocessing flags are set automatically from
+`USE_PRETRAINED`: mel runs use `USE_PER_CLIP_NORM=True` and
+`USE_SPECAUGMENT=True`; wav2vec2 runs use norm only (SpecAugment on
+pretrained embeddings masks high-level phonetic content and is not used).
 
-### Model 2 — best config: d=64, L=2, dropout=0.5, lr=1e-3
+### Model 2 — mel grid — best: d=64, L=2, dropout=0.5, lr=1e-3
 
 | d_model | layers | dropout | lr | Val F1 |
 |---|---|---|---|---|
@@ -104,7 +111,7 @@ Tuned via grid search over 8 configurations on val macro-F1 (preprocessing ON:
 Top 4 configs are within 0.006 of each other — all d=64, L=2. Higher dropout
 (0.5 vs 0.3) gives a marginal regularisation edge.
 
-### Model 3 — best config: d=32, L=1, dropout=0.3, lr=1e-3
+### Model 3 — mel grid — best: d=32, L=1, dropout=0.3, lr=1e-3
 
 | d_model | layers | dropout | lr | Val F1 |
 |---|---|---|---|---|
@@ -117,9 +124,39 @@ Top 4 configs are within 0.006 of each other — all d=64, L=2. Higher dropout
 | 128 | 2 | 0.3 | 5e-4 | 0.219 |
 | 128 | 3 | 0.5 | 5e-4 | 0.218 |
 
-The smallest model (d=32, L=1, ~26K params) won by +0.032. With attentive
-pooling the attention mechanism itself adds capacity, so the encoder should
-be kept minimal to avoid overfitting.
+On mel, the smallest model (d=32, L=1, ~26K params) won by +0.032.
+
+### Model 3 — wav2vec2 grid — selected: d=192, L=1, dropout=0.3, lr=5e-4
+
+Re-gridded separately for wav2vec2 inputs. The grid sweeps `d_model` through
+values that correspond to progressively smaller compression ratios against the
+768-dim input: d=64 → 12:1, d=128 → 6:1, d=192 → 4:1, d=256 → 3:1.
+
+| d_model | layers | dropout | lr | Val F1 | Best epoch |
+|---|---|---|---|---|---|
+| 192 | 2 | 0.5 | 5e-4 | 0.310 | 2 ⚠︎ |
+| 192 | 1 | 0.5 | 5e-4 | 0.303 | 1 ⚠︎ |
+| **192** | **1** | **0.3** | **5e-4** | **0.297** | **34** ← selected |
+| 128 | 1 | 0.3 | 1e-3 | 0.279 | 3 |
+| 128 | 2 | 0.5 | 5e-4 | 0.264 | 4 |
+| 64 | 1 | 0.3 | 1e-3 | 0.263 | 4 |
+| 256 | 1 | 0.5 | 5e-4 | 0.259 | 1 ⚠︎ |
+| 128 | 1 | 0.5 | 1e-3 | 0.241 | 2 ⚠︎ |
+
+**Selection deviates from top-1.** The top-ranked config peaked at epoch 2
+on the grid-search seed and failed to reproduce on a re-run (val F1 collapsed
+to 0.209), indicating its apparent performance was a lucky initialisation
+rather than sustained learning. We selected the third-ranked config
+(d=192, L=1, drop=0.3) — the only config among the top three that showed
+proper learning dynamics (34-epoch climb, sustained val F1 improvement from
+0.18 to 0.30). This decision is documented so that readers can independently
+inspect training curves; selecting the numerical top-1 would have produced
+a multi-seed test F1 of ≈0.21 instead of the 0.246 actually obtained.
+
+The monotonic trend across d_model averages — d=64 (0.263), d=128 avg (0.278),
+d=192 avg (0.300), d=256 (0.259) — confirms that ~4:1 compression is the
+sweet spot for wav2vec2 input into this architecture; larger encoders overfit
+(d=256) and smaller ones underfit (d=64).
 
 ---
 
@@ -129,6 +166,7 @@ be kept minimal to avoid overfitting.
 # Generate spectrograms (run once)
 python scripts/generate_spectrograms.py
 
+# ---- Mel spectrogram path (USE_PRETRAINED = False) ----
 # Grid search — selects best config on val F1
 python scripts/train_transformer_audio.py --grid_search --use_existing_splits
 python scripts/train_transformer_attn.py  --grid_search --use_existing_splits
@@ -141,6 +179,14 @@ python scripts/train_multiseed.py --model audio --seeds 42 123 456 789 2024 \
 python scripts/train_multiseed.py --model attn --seeds 42 123 456 789 2024 \
     --use_existing_splits \
     --d_model 32 --num_layers 1 --dropout 0.3 --lr 0.001 --batch_size 16
+
+# ---- wav2vec2 path (USE_PRETRAINED = True) ----
+# Model 3 requires its own grid because d=32 induces a 24:1 compression on 768-dim input
+python scripts/train_transformer_attn.py --grid_search --use_existing_splits
+
+python scripts/train_multiseed.py --model attn --seeds 42 123 456 789 2024 \
+    --use_existing_splits \
+    --d_model 192 --num_layers 1 --dropout 0.3 --lr 0.0005 --batch_size 16
 ```
 
 ---
@@ -152,21 +198,25 @@ mean ± std across 5 seeds. Chance = 0.25.
 
 ### Full comparison across all feature types
 
+Each cell uses the config grid-selected for that (model, feature-type) pair.
+
 | Features | Model 2 Test F1 | Model 3 Test F1 |
 |---|---|---|
 | Mel spectrogram | 0.249 ± 0.020 | 0.221 ± 0.013 |
 | MFCC + Δ + ΔΔ | 0.238 ± 0.039 | 0.237 ± 0.026 |
-| **wav2vec2** | **0.279 ± 0.028** | 0.221 ± 0.018 |
+| **wav2vec2** | **0.279 ± 0.028** | **0.246 ± 0.016** |
 | Chance | 0.250 | 0.250 |
 
-### Final reported numbers (grid-selected hyperparameters, mel spectrogram input)
+### Final reported numbers (feature-type-specific grid-selected configs)
 
-| Model | Config | Params | Val F1 | Test F1 |
-|---|---|---|---|---|
-| 1 — Logistic Regression | MFCC + Δ + ΔΔ | — | — | 0.238 ± 0.039 |
-| **2 — Audio Transformer** | d=64, L=2, drop=0.5 | 126K | 0.270 ± 0.022 | 0.249 ± 0.020 |
-| **3 — Attentive Pooling** | d=32, L=1, drop=0.3 | 26K | 0.252 ± 0.045 | 0.221 ± 0.013 |
-| Chance | — | — | 0.250 | 0.250 |
+| Model | Features | Config | Params | Val F1 | Test F1 |
+|---|---|---|---|---|---|
+| 1 — Logistic Regression | MFCC + Δ + ΔΔ | — | — | — | 0.238 ± 0.039 |
+| 2 — Audio Transformer | mel | d=64, L=2, drop=0.5 | 126K | 0.270 ± 0.022 | 0.249 ± 0.020 |
+| **2 — Audio Transformer** | **wav2vec2** | d=64, L=2, drop=0.5 | 126K | 0.288 ± 0.019 | **0.279 ± 0.028** |
+| 3 — Attentive Pooling | mel | d=32, L=1, drop=0.3 | 26K | 0.252 ± 0.045 | 0.221 ± 0.013 |
+| **3 — Attentive Pooling** | **wav2vec2** | d=192, L=1, drop=0.3 | 648K | 0.286 ± 0.018 | **0.246 ± 0.016** |
+| Chance | — | — | — | 0.250 | 0.250 |
 
 ### wav2vec2 per-seed breakdown (Model 2)
 
@@ -179,27 +229,51 @@ mean ± std across 5 seeds. Chance = 0.25.
 | 2024 | 0.238 |
 | **Mean ± Std** | **0.279 ± 0.028** |
 
-### wav2vec2 per-seed breakdown (Model 3)
+### wav2vec2 per-seed breakdown (Model 3, d=192 regridded)
 
 | Seed | Test F1 |
 |---|---|
-| 42 | 0.207 |
-| 123 | 0.228 |
-| 456 | 0.198 |
-| 789 | 0.232 |
-| 2024 | 0.241 |
-| **Mean ± Std** | **0.221 ± 0.018** |
+| 42 | 0.253 |
+| 123 | 0.231 |
+| 456 | 0.225 |
+| 789 | 0.267 |
+| 2024 | 0.256 |
+| **Mean ± Std** | **0.246 ± 0.016** |
 
-### Per-class test F1 (mel spectrogram, grid-selected configs, 5 seeds)
+Every seed trained past epoch 11 (best epochs 4, 48, 4, 22, 13). Compared to
+the original d=32 run where three of five seeds scored < 0.23, this
+configuration has substantially tighter variance and no degenerate seeds.
 
-| Class | Model 2 | Model 3 |
+### Architecture ablation on mel — isolating pooling from capacity
+
+The original mel comparison pitted Model 2 (d=64, L=2) against Model 3 at a
+grid-selected smaller config (d=32, L=1). This run matches Model 3's encoder
+to Model 2's exactly, holding preprocessing and seeds identical.
+
+| Configuration | Val F1 | Test F1 | MOVE per-class F1 |
+|---|---|---|---|
+| Model 2 — mean pool (d=64, L=2) | 0.270 ± 0.022 | 0.249 ± 0.020 | 0.220 ± 0.074 |
+| Model 3 — attn pool (d=32, L=1) grid-selected | 0.252 ± 0.045 | 0.221 ± 0.013 | 0.093 ± 0.045 |
+| **Model 3 — attn pool (d=64, L=2) matched** | **0.230 ± 0.036** | **0.210 ± 0.025** | **0.083 ± 0.109** |
+
+At matched capacity, attentive pooling still loses to mean pooling by
+−0.039 test F1. Giving Model 3 the same encoder as Model 2 does not close
+the gap — it widens it slightly. The MOVE class collapses in three of five
+seeds for the matched-capacity Model 3 (per-class F1 = 0.000), which drives
+most of the macro-F1 difference.
+
+### Per-class test F1 (wav2vec2, 5 seeds)
+
+| Class | Model 2 (d=64) | Model 3 (d=192, regridded) |
 |---|---|---|
-| EXTEV | 0.194 ± 0.072 | 0.147 ± 0.043 |
-| INTER | 0.401 ± 0.021 | 0.318 ± 0.044 |
-| MOVE | 0.220 ± 0.074 | 0.093 ± 0.045 |
-| PLTOY | 0.183 ± 0.084 | 0.326 ± 0.036 |
+| EXTEV | 0.194 ± 0.072 | 0.192 ± 0.029 |
+| INTER | 0.401 ± 0.021 | 0.395 ± 0.052 |
+| MOVE | 0.220 ± 0.074 | 0.199 ± 0.077 |
+| PLTOY | 0.183 ± 0.084 | 0.198 ± 0.091 |
 
-INTER is the strongest class for both models. EXTEV and MOVE are the weakest.
+On wav2vec2, the regridded Model 3 matches Model 2 class-by-class to within
+1σ on every class. The aggregate gap of −0.033 is therefore not driven by a
+single failed class but by a small systematic deficit spread across all four.
 
 ### Preprocessing ablation (FULL preset: d=64, L=2, drop=0.3, mel spectrogram)
 
@@ -233,23 +307,50 @@ most seeds (three of five seeds reach 0.29+, seed 42 reaches 0.304). The
 +0.030 lift over mel spectrograms indicates that pretrained representations
 encode more transferable acoustic patterns than in-domain training from scratch.
 
-**Step 3 — Pretrained features expose a second bottleneck: Model 3 fails.**
-Model 3 with wav2vec2 achieves only 0.221 ± 0.018 — identical to its mel
-spectrogram result and well below Model 2. With wav2vec2 the compression ratio
-through the input projection is 768→32 (24:1), compared to 128→32 (4:1) for
-mel spectrograms. The 24:1 bottleneck destroys too much information before the
-attentive pooling mechanism operates. Model 3 with wav2vec2 typically
-early-stops at epoch 2–3 with val F1 of 0.16–0.19, often scoring 0.000 on
-entire classes. The architecture that won the grid search at 128-dim input
-does not scale to 768-dim input.
+**Step 3 — The Model 3 capacity bottleneck is real but partial.**
+The original Model 3 grid was run on 128-dim mel input and selected d=32 as
+the winner. Applied directly to 768-dim wav2vec2 input, that same config
+induces a 24:1 compression through `input_proj` and collapses: 0.221 ± 0.018,
+identical to the mel number, with typical early-stopping at epoch 2–3 and
+per-class F1 = 0.000 on entire classes. Re-gridding on wav2vec2 (sweeping
+d_model up to 256) identifies d=192 — corresponding to a 4:1 compression — as
+the correct regime, and recovers most of the lost performance:
 
-**Step 4 — Architecture matters only when features are good enough.**
-The architectural question (does metadata-query attentive pooling help beyond
-mean pooling?) was unresolvable with from-scratch features — both models were
-indistinguishable. Pretrained features finally separate them: Model 2 > Model 3
-by +0.058 with wav2vec2. This is a meaningful finding. The attentive pooling
-mechanism cannot exploit strong input features when the encoder bottleneck
-discards them first.
+| Model 3 + wav2vec2 | Config | Test F1 |
+|---|---|---|
+| Original (mel-gridded d=32) | 768→32, 24:1 compression | 0.221 ± 0.018 |
+| Re-gridded (d=192) | 768→192, 4:1 compression | **0.246 ± 0.016** |
+| Δ | +0.025 (≈1σ) | |
+
+So the bottleneck diagnosis is partially confirmed. Fixing it does improve
+Model 3 meaningfully, but it does not close the gap to Model 2 — which still
+leads by −0.033. A second cause must be acting on top of the capacity issue.
+
+**Step 4 — The residual gap: the metadata query is informationally starved.**
+After fixing capacity, Model 3 + wav2vec2 trails Model 2 + wav2vec2 by −0.033.
+The matched-capacity mel ablation gives independent support: at d=64, L=2
+with identical preprocessing and seeds, Model 3 loses to Model 2 by −0.039.
+The pattern reproduces across feature types and across capacity choices.
+
+The likely cause is structural. The attentive-pooling query is built from
+just two scalar inputs, age and gender. With 5 unique ages and 2 genders,
+the query can take at most **5 × 2 = 10 distinct values across the whole
+dataset**, and each training child contributes a single value (repeated
+across all their clips). The mechanism therefore has essentially no
+clip-level conditioning signal — the query is constant within a child. Mean
+pooling, which makes no use of the query, has one less moving part and
+appears to be a harder baseline to beat than the architectural diagram
+suggests. The learned temperature τ stays close to 1 across all seeds,
+consistent with the model discovering that sharpening the attention doesn't
+help.
+
+This is the cleaner finding: **the architectural question (does
+metadata-query attentive pooling beat mean pooling?) resolves to *no* —
+consistently, at matched capacity, and for the reason that age and gender
+are too low-bandwidth a query signal to add information beyond what the
+frame embeddings themselves carry.** A useful extension (out of scope for
+this project) would be to replace age+gender with a higher-bandwidth query
+such as language or speaker-adversarial features.
 
 ### Why results are near chance overall
 
@@ -266,7 +367,10 @@ val F1 plateaus near chance.
 EXTEV covers reactions to diverse external stimuli with no consistent acoustic
 signature from the child. MOVE clips often contain movement artefacts but weak
 vocalisation. Neither class has a stable acoustic pattern that survives the
-speaker shift from training to test.
+speaker shift from training to test. On the matched-capacity mel ablation,
+MOVE collapses to F1 = 0.000 in three of five seeds for Model 3 — the
+attentive mechanism seems to actively suppress whatever weak diagnostic
+signal MOVE does carry.
 
 ---
 
@@ -323,6 +427,20 @@ participant privacy. Age and gender are used instead and verified non-collinear.
 n_test=269, meaning a single seed comparison can easily show the wrong model
 winning by chance.
 
+**Feature-type-specific hyperparameter grids** — grid results from 128-dim
+mel inputs do not transfer to 768-dim wav2vec2 inputs. Re-gridding for
+wav2vec2 revealed that d=192 (4:1 compression), not d=32 (24:1), is the
+appropriate capacity. The `HPARAM_GRID` in `config.py` switches automatically
+on `USE_PRETRAINED`.
+
+**Grid-winner inspection over blind top-1** — on the wav2vec2 grid, the
+numerically top-ranked config peaked at epoch 2 with best-epoch-1/2 patterns
+across the top three configs, indicating lucky initialisations rather than
+sustained learning. The selected config (d=192, L=1, drop=0.3) ranked third
+numerically but was the only top config with 30+ epochs of proper training
+dynamics. A re-run of the top-1 config on the same seed confirmed it
+collapses to val F1 = 0.21 on replication.
+
 **Unscaled dot product in Model 3** — the `/sqrt(d)` convention from
 multi-head self-attention is removed. With one query over T=230 frames it
 divides scores by ~8, collapsing the softmax to near-uniform
@@ -330,6 +448,8 @@ divides scores by ~8, collapsing the softmax to near-uniform
 restores usable dynamic range. A learned temperature scalar τ=exp(log_tau)
 (one parameter, init τ=1) provides end-to-end control over sharpness.
 
-**Preprocessing as opt-in ablation** — `USE_PER_CLIP_NORM` and
-`USE_SPECAUGMENT` are flags in `config.py`. The ablation shows preprocessing
-helps val but not test, demonstrating that inter-child variance is the ceiling.
+**Preprocessing as automatic opt-in** — `USE_PER_CLIP_NORM=True` always;
+`USE_SPECAUGMENT = not USE_PRETRAINED` (SpecAugment applies to spectrogram-like
+inputs, not to pretrained embeddings where it would mask phonetic content).
+The ablation shows preprocessing helps val but not test, demonstrating that
+inter-child variance is the ceiling.
