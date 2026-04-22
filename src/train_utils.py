@@ -5,6 +5,26 @@ Training loop, evaluation, sanity checks, and results logging.
 Supports both the audio-only Transformer (Model 2) and the attentive
 pooling Transformer (Model 3) via a use_meta flag.
 
+Defensive coding notes
+----------------------
+Two footguns that were present in earlier versions, now fixed:
+
+  1. train_model returns the model in best-val state. Previously the
+     in-memory model was left at whatever epoch training stopped on,
+     and callers had to remember to reload from disk. Now train_model
+     reloads the best checkpoint itself, so the returned model matches
+     the reported best_val_f1 without extra work from the caller.
+     Existing callers that still reload from disk are unaffected —
+     the reload is idempotent.
+
+  2. evaluate computes macro-F1 over the full fixed CLASS_NAMES list,
+     not just over classes present in y_true ∪ y_pred. Previously, if
+     any class was absent from both preds and labels, sklearn would
+     silently drop it from the macro average, inflating the score.
+     This does not fire on our current splits (every split contains
+     all 4 classes), but the fix makes the metric robust to future
+     splits or smaller ablations.
+
 GPU notes
 ---------
 - cudnn.benchmark is enabled at import time. Our input shapes are fixed
@@ -32,6 +52,10 @@ from config import CLASS_NAMES, LABEL_DECODER
 
 # Enable cuDNN autotuner for fixed-shape inputs (free speedup on GPU).
 torch.backends.cudnn.benchmark = True
+
+# Full class list used for all macro-F1 computations. Importing CLASS_NAMES
+# is the single source of truth; this is just a convenience.
+_ALL_CLASS_IDS = list(range(len(CLASS_NAMES)))
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +153,15 @@ def evaluate(model, loader, device,
                    argmax over logits is unaffected by bf16 vs fp32 in
                    practice.
 
+    Notes
+    -----
+    Macro-F1 is computed over the full fixed class list
+    (labels=list(range(len(CLASS_NAMES)))). If a class is absent from
+    both labels and predictions, its F1 is 0 (via zero_division=0) and
+    it is still counted in the macro average. This keeps the metric
+    consistent across splits and prevents silent inflation when a class
+    is missing.
+
     Returns dict with keys: 'macro_f1', 'per_class_f1',
     and optionally 'preds', 'labels', 'attn_weights'.
     """
@@ -171,11 +204,16 @@ def evaluate(model, loader, device,
             all_preds.extend(logits.argmax(dim=1).cpu().tolist())
             all_labels.extend(y.tolist())
 
+    # Fix: compute macro-F1 over the full 4-class list, not just classes
+    # present in preds ∪ labels. Without labels=_ALL_CLASS_IDS, sklearn
+    # would drop any class missing from both predictions and ground truth
+    # from the macro average, silently inflating the score.
     macro_f1     = f1_score(all_labels, all_preds,
-                            average="macro", zero_division=0)
+                            average="macro", zero_division=0,
+                            labels=_ALL_CLASS_IDS)
     per_class_f1 = f1_score(all_labels, all_preds,
                             average=None, zero_division=0,
-                            labels=list(range(len(CLASS_NAMES))))
+                            labels=_ALL_CLASS_IDS)
 
     result = {
         "macro_f1"    : macro_f1,
@@ -202,6 +240,13 @@ def train_model(model, train_loader, val_loader, criterion, device,
     """
     Train with AdamW + ReduceLROnPlateau + early stopping.
     Monitors val macro-F1 (higher = better).
+
+    On exit, the in-memory `model` is restored to its best-val state
+    (the checkpoint that produced best_val_f1). Callers can therefore
+    evaluate the returned model directly without an additional
+    load_state_dict step. If save_path is None or the file doesn't
+    exist, the model keeps its final-epoch weights — which is a degraded
+    case but at least the behaviour is now explicit.
     """
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=lr, weight_decay=weight_decay
@@ -264,6 +309,17 @@ def train_model(model, train_loader, val_loader, criterion, device,
     if verbose:
         print(f"\n  Training complete: best val macro-F1 = {best_val_f1:.4f} "
               f"(epoch {stopped_epoch - patience}, {elapsed:.1f}s)")
+
+    # Fix: restore the in-memory model to its best-val state before
+    # returning. Previously the caller had to remember to reload from
+    # disk; evaluating the returned model directly would use last-epoch
+    # weights instead of best-val weights. This reload is idempotent
+    # with any caller that also reloads from disk later (like
+    # train_transformer_audio.py and train_transformer_attn.py do).
+    if save_path and Path(save_path).exists():
+        model.load_state_dict(torch.load(save_path, map_location=device))
+    elif save_path and verbose:
+        print(f"  ⚠ No checkpoint found at {save_path}; model is in last-epoch state.")
 
     return {
         "best_val_f1"  : best_val_f1,

@@ -30,23 +30,22 @@ RES_DIR  = Path("/home/renku/work/data")
 # ---------------------------------------------------------------------------
 # Input paths  (derived from DATA_DIR — READ ONLY)
 # ---------------------------------------------------------------------------
-WAV_DIR      = DATA_DIR / "denoised_audios"     # audio_0000.wav … audio_1008.wav
+WAV_DIR      = DATA_DIR / "denoised_audios"
 CONTEXTS_CSV = DATA_DIR / "contextsvocs_groupproject_2026-04-09_104847.csv"
 
 # ---------------------------------------------------------------------------
-# Output paths  (derived from RES_DIR — READ/WRITE, synced to SwitchDrive)
+# Output paths
 # ---------------------------------------------------------------------------
-SPEC_DIR    = RES_DIR / "spectrograms"   # generated from WAV files — writable
-MFCC_DIR    = RES_DIR / "mfccs"          # MFCC .npy files (from audio_to_mfccs.py)
-PRETRAINED_DIR = RES_DIR / "pretrained_embeddings"  # wav2vec2 .npy files (from Colab)
+SPEC_DIR    = RES_DIR / "spectrograms"
+MFCC_DIR    = RES_DIR / "mfccs"
+PRETRAINED_DIR = RES_DIR / "pretrained_embeddings"
 SPLITS_DIR  = RES_DIR / "splits"
 MODELS_DIR  = RES_DIR / "models"
 RESULTS_DIR = RES_DIR / "results"
 FIGURES_DIR = RES_DIR / "figures"
 
 # ---------------------------------------------------------------------------
-# Label mapping  (labels already in 4-class format — no mapping needed)
-# context_label column contains: EXTEV, INTER, MOVE, PLTOY directly
+# Label mapping
 # ---------------------------------------------------------------------------
 PLTOY_LABELS = {"PLTOY"}
 MOVE_LABELS  = {"MOVE"}
@@ -58,62 +57,58 @@ LABEL_ENCODER = {c: i for i, c in enumerate(CLASS_NAMES)}
 LABEL_DECODER = {i: c for c, i in LABEL_ENCODER.items()}
 N_CLASSES     = len(CLASS_NAMES)
 
-# No language filter — the dataset spans Shipibo, Tagalog, Vietnamese
-# intentionally. All three languages are used together.
 LANG_FILTER = None
 
 # ---------------------------------------------------------------------------
 # Spectrogram generation parameters
-# Used by generate_spectrograms.py and determines F_DIM
 # ---------------------------------------------------------------------------
-SPEC_SR    = 16000   # resample rate (Hz)
-SPEC_N_MELS = 128    # mel frequency bins  →  F_DIM = 128
-SPEC_HOP   = 256     # hop length in samples
-SPEC_N_FFT = 1024    # FFT window size
-SPEC_FMIN  = 20      # min frequency (Hz)
-SPEC_FMAX  = 8000    # max frequency (Hz)
+SPEC_SR    = 16000
+SPEC_N_MELS = 128
+SPEC_HOP   = 256
+SPEC_N_FFT = 1024
+SPEC_FMIN  = 20
+SPEC_FMAX  = 8000
 
 # ---------------------------------------------------------------------------
-# Sequence constants (set here; verified at runtime by audit_spectrograms)
+# Sequence constants
 # ---------------------------------------------------------------------------
-F_DIM   = 128    # mel frequency bins (actual audio resolution, not image size)
-MAX_LEN = 230    # time frame cap (p95 of actual frame counts before resizing)
-                 # The 1000×400 viridis PNGs are resized to MAX_LEN×F_DIM inside load_png()
+F_DIM   = 128
+MAX_LEN = 230
 
 # ---------------------------------------------------------------------------
 # Hyperparameter presets
-#
-# HPARAM_SMALL → < 100 training examples  (pilot fallback)
-# HPARAM_FULL  → 300+ training examples   (current: 1009 clips)
 # ---------------------------------------------------------------------------
 HPARAM_SMALL = {
     "d_model": 32, "nhead": 4, "num_layers": 1,
     "dropout": 0.4, "lr": 1e-3, "weight_decay": 1e-4,
     "batch_size": 8, "epochs": 150, "patience": 20,
+    "label_smoothing": 0.0,
 }
-
+"""
 HPARAM_FULL = {
     "d_model": 64, "nhead": 4, "num_layers": 2,
-    "dropout": 0.3, "lr": 1e-3, "weight_decay": 1e-4,
-    "batch_size": 64, "epochs": 100, "patience": 15,
+    "dropout": 0.5, "lr": 1e-3, "weight_decay": 1e-4,
+    "batch_size": 32, "epochs": 100, "patience": 15,
+    "label_smoothing": 0.1,
+}
+"""
+HPARAM_FULL = {
+    "d_model": 192, "nhead": 4, "num_layers": 1,
+    "dropout": 0.3, "lr": 5e-4, "weight_decay": 1e-4,
+    "batch_size": 16, "epochs": 100, "patience": 15,
+    "label_smoothing": 0.0,   # ← match canonical wav2vec2
 }
 
-# Active default — FULL because we have 1009 examples
 HPARAM_DEFAULTS = HPARAM_FULL
 
 # ---------------------------------------------------------------------------
-# Preprocessing / augmentation flags
+# Feature-type switches
 # ---------------------------------------------------------------------------
-# Input feature selection. When False (default), the pipeline loads mel
-# spectrogram PNGs from SPEC_DIR — this is the spec-compliant configuration.
-# When True, it loads MFCC .npy files from MFCC_DIR instead. Both produce
-# (MAX_LEN, F_DIM) tensors so no other config changes are needed.
 USE_MFCC = False
 
 # Pretrained audio embeddings (wav2vec2-base). When True, loads .npy files
 # from PRETRAINED_DIR and overrides F_DIM to 768 (wav2vec2 embedding dim).
-# Extract embeddings using the Colab notebook (extract_wav2vec2_embeddings.ipynb).
-USE_PRETRAINED = True
+USE_PRETRAINED = True   # ← flip to True when doing wav2vec2 runs
 
 assert not (USE_MFCC and USE_PRETRAINED), \
     "Cannot use both USE_MFCC and USE_PRETRAINED — pick one."
@@ -122,23 +117,49 @@ assert not (USE_MFCC and USE_PRETRAINED), \
 if USE_PRETRAINED:
     F_DIM = 768
 
-# Per-clip mean/variance normalisation of the cached spectrogram tensor.
-# Subtracts the per-clip mean and divides by the per-clip std along the
-# time axis. Removes loudness/timbre drift across children, which is the
-# dominant nuisance variable in participant-disjoint evaluation.
-# Vectorised, applied once at dataset construction.
+# ---------------------------------------------------------------------------
+# Preprocessing flags — derive from USE_PRETRAINED so you don't have to
+# remember to flip them manually.
+# ---------------------------------------------------------------------------
 USE_PER_CLIP_NORM = True
-
-# SpecAugment (time + frequency masking) applied train-only inside
-# __getitem__. Default values are conservative for short clips.
+# SpecAugment is for spectrogram-like inputs only. Masking wav2vec2
+# embeddings would zero out learned phonetic content — not useful.
 USE_SPECAUGMENT = not USE_PRETRAINED
-SPECAUG_TIME_MASKS  = 2     # number of time bands to mask
-SPECAUG_TIME_WIDTH  = 25    # max width (frames) of each time band
-SPECAUG_FREQ_MASKS  = 2     # number of frequency bands to mask
-SPECAUG_FREQ_WIDTH  = 12    # max width (mel bins) of each freq band
 
-# Hyperparameter grid (used with --grid_search flag)
+# SpecAugment hyperparameters (only used when USE_SPECAUGMENT=True)
+SPECAUG_TIME_MASKS  = 2
+SPECAUG_TIME_WIDTH  = 25
+SPECAUG_FREQ_MASKS  = 2
+SPECAUG_FREQ_WIDTH  = 12
+
+# ---------------------------------------------------------------------------
+# Metadata ablation (Model 3 only — ignored when use_external_meta=False)
+# ---------------------------------------------------------------------------
+# Which metadata fields to pass to the attention query. Used to isolate
+# each field's contribution to test F1 without editing model or training
+# code. See MetadataSpectrogramDataset in data_utils.py.
+#
+# Allowed values:
+#   "age_gender"  : use both (canonical — matches what the README reports)
+#   "age_only"    : gender is zeroed out at the dataset boundary
+#   "gender_only" : age is zeroed out at the dataset boundary
+#   "none"        : both zeroed (same as use_external_meta=False)
+#
+# Flip this while running the ablation, then flip back to "age_gender"
+# for your canonical runs. The flag is read at dataset-construction time.
+# ---------------------------------------------------------------------------
+METADATA_MODE = "age_gender"
+#METADATA_MODE = "age_only" 
+#METADATA_MODE = "gender_only" 
+
+
+
+# ---------------------------------------------------------------------------
+# Hyperparameter grids
+# ---------------------------------------------------------------------------
+
 if USE_PRETRAINED:
+    # wav2vec2 grid — capacity-focused
     HPARAM_GRID = [
         {"d_model": 64,  "num_layers": 1, "dropout": 0.3, "lr": 1e-3, "batch_size": 16},
         {"d_model": 128, "num_layers": 1, "dropout": 0.3, "lr": 1e-3, "batch_size": 16},
@@ -150,26 +171,37 @@ if USE_PRETRAINED:
         {"d_model": 256, "num_layers": 1, "dropout": 0.5, "lr": 5e-4, "batch_size": 16},
     ]
 else:
+    # Mel grid — regularization-focused mini-grid for hyperparameter tuning
     HPARAM_GRID = [
-        {"d_model": 32,  "num_layers": 1, "dropout": 0.3, "lr": 1e-3, "batch_size": 16},
-        {"d_model": 32,  "num_layers": 1, "dropout": 0.5, "lr": 1e-3, "batch_size": 16},
-        {"d_model": 64,  "num_layers": 2, "dropout": 0.3, "lr": 1e-3, "batch_size": 32},
-        {"d_model": 64,  "num_layers": 2, "dropout": 0.5, "lr": 1e-3, "batch_size": 32},
-        {"d_model": 64,  "num_layers": 2, "dropout": 0.3, "lr": 5e-4, "batch_size": 32},
-        {"d_model": 128, "num_layers": 2, "dropout": 0.3, "lr": 5e-4, "batch_size": 32},
-        {"d_model": 128, "num_layers": 3, "dropout": 0.3, "lr": 5e-4, "batch_size": 32},
-        {"d_model": 128, "num_layers": 3, "dropout": 0.5, "lr": 5e-4, "batch_size": 32},
+        {"d_model": 64, "num_layers": 2, "dropout": 0.5,
+         "lr": 1e-3, "batch_size": 32,
+         "weight_decay": 1e-4, "label_smoothing": 0.0},
+        {"d_model": 64, "num_layers": 2, "dropout": 0.5,
+         "lr": 1e-3, "batch_size": 32,
+         "weight_decay": 1e-4, "label_smoothing": 0.1},
+        {"d_model": 64, "num_layers": 2, "dropout": 0.5,
+         "lr": 1e-3, "batch_size": 32,
+         "weight_decay": 5e-4, "label_smoothing": 0.1},
+        {"d_model": 64, "num_layers": 2, "dropout": 0.6,
+         "lr": 1e-3, "batch_size": 32,
+         "weight_decay": 1e-4, "label_smoothing": 0.1},
+        {"d_model": 64, "num_layers": 2, "dropout": 0.7,
+         "lr": 1e-3, "batch_size": 32,
+         "weight_decay": 5e-4, "label_smoothing": 0.1},
+        {"d_model": 32, "num_layers": 1, "dropout": 0.5,
+         "lr": 1e-3, "batch_size": 32,
+         "weight_decay": 1e-4, "label_smoothing": 0.1},
     ]
-
 
 RANDOM_SEED = 42
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 def make_output_dirs():
-    """Create all output directories. Safe to call multiple times."""
-    for d in [SPEC_DIR, MFCC_DIR, PRETRAINED_DIR, SPLITS_DIR, MODELS_DIR, RESULTS_DIR, FIGURES_DIR]:
+    for d in [SPEC_DIR, MFCC_DIR, PRETRAINED_DIR, SPLITS_DIR,
+              MODELS_DIR, RESULTS_DIR, FIGURES_DIR]:
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -198,4 +230,8 @@ def print_config():
                  "mel spectrogram (128 bins)")
     print(f"F_DIM / MAX_LEN : {F_DIM} / {MAX_LEN}  (input: {feat_src})")
     print(f"Features        : {feat_desc}")
+    print(f"Preprocessing   : norm={USE_PER_CLIP_NORM}, "
+          f"SpecAugment={USE_SPECAUGMENT}")
+    print(f"Metadata mode   : {METADATA_MODE}")
+    print(f"Grid size       : {len(HPARAM_GRID)} configs")
     print("=" * 62)

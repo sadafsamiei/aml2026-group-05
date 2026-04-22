@@ -163,7 +163,9 @@ def run_single(folds, f_dim, max_len, hparams, device, run_tag="single"):
         print(f"  Chance   : {1/n_present:.3f}")
         print(f"  d={hparams['d_model']}, L={hparams['num_layers']}, "
               f"drop={hparams['dropout']}, lr={hparams['lr']}, "
-              f"batch={hparams['batch_size']}")
+              f"batch={hparams['batch_size']}, "
+              f"wd={hparams.get('weight_decay', 1e-4)}, "
+              f"ls={hparams.get('label_smoothing', 0.0)}")
         print(f"{'='*55}")
 
         train_ds = SpectrogramDataset(train_df, LABEL_ENCODER, max_len, f_dim,
@@ -197,8 +199,12 @@ def run_single(folds, f_dim, max_len, hparams, device, run_tag="single"):
             model.print_architecture()
             sanity_check_forward(model, f_dim, max_len, N_CLASSES, device)
 
+        # Label smoothing is pulled from hparams; defaults to 0.0 if absent,
+        # making old hparam dicts bit-compatible with this script.
         criterion = torch.nn.CrossEntropyLoss(
-            weight=train_ds.class_weights().to(device))
+            weight=train_ds.class_weights().to(device),
+            label_smoothing=hparams.get("label_smoothing", 0.0),
+        )
 
         save_path = MODELS_DIR / f"transformer_audio_{fold_tag}.pt"
         print(f"\nTraining...")
@@ -251,14 +257,6 @@ def run_single(folds, f_dim, max_len, hparams, device, run_tag="single"):
             "stopped_epoch"    : train_result["stopped_epoch"],
             "elapsed_s"        : train_result["elapsed_s"],
             "checkpoint"       : str(save_path),
-            # ── Added for multi-seed wrapper ─────────────────────────────
-            # The wrapper (scripts/train_multiseed.py) needs these fields
-            # to build training-curve overlays and averaged confusion
-            # matrices across seeds. Adding them is a pure data widening:
-            # nothing about the per-fold training, evaluation, or saved
-            # JSON shape changes for the existing single-run workflow,
-            # because save_results() simply serialises whatever dict we
-            # hand it (lists of ints/floats are JSON-safe).
             "history"          : train_result["history"],
             "val_preds"        : val_result["preds"],
             "val_labels"       : val_result["labels"],
@@ -307,15 +305,33 @@ def run_grid_search(folds, f_dim, max_len, device):
         print(f"\nConfig {i+1}/{len(HPARAM_GRID)}: {hp}")
         result = run_single(folds[:1], f_dim, max_len, hp_full, device,
                             run_tag=f"grid_{i}")
+        # Capture best_epoch for overfitting diagnosis in the grid report
+        fold0 = result["fold_results"][0]
+        best_epoch = (fold0["history"]["val_f1"].index(
+            max(fold0["history"]["val_f1"])) + 1) if fold0.get("history") else None
+        final_train_loss = (fold0["history"]["train_loss"][-1]
+                            if fold0.get("history") else None)
         grid_results.append({
             "config_id": i, "hparams": hp,
-            "val_macro_f1": result["val_macro_f1_mean"],
+            "val_macro_f1"    : result["val_macro_f1_mean"],
+            "test_macro_f1"   : result["test_macro_f1_mean"],
+            "best_val_epoch"  : best_epoch,
+            "final_train_loss": final_train_loss,
+            "stopped_epoch"   : fold0["stopped_epoch"],
         })
 
     grid_results.sort(key=lambda x: x["val_macro_f1"], reverse=True)
-    print(f"\n{'='*55}\nGrid results (sorted):")
+    print(f"\n{'='*55}\nGrid results (sorted by val F1):")
+    print(f"  {'val':>7} {'test':>7} {'best_ep':>7} {'stopped':>7} "
+          f"{'final_tr_loss':>14}  hparams")
     for r in grid_results:
-        print(f"  F1={r['val_macro_f1']:.4f}  {r['hparams']}")
+        print(f"  {r['val_macro_f1']:>7.4f} {r['test_macro_f1']:>7.4f} "
+              f"{str(r['best_val_epoch']):>7} {str(r['stopped_epoch']):>7} "
+              f"{r['final_train_loss']:>14.4f}  {r['hparams']}")
+    print(f"\nOverfitting diagnosis (same hparams, different runs):")
+    print(f"  - best_ep < 5 and final_tr_loss < 0.2 → still overfitting fast")
+    print(f"  - best_ep > 15 and final_tr_loss > 0.3 → regularization working")
+    print(f"  - sustained val > 0.30 across multiple configs → real signal")
 
     save_results({"grid_results": grid_results},
                  RESULTS_DIR / f"grid_search_audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
@@ -333,14 +349,16 @@ def parse_args():
     p = argparse.ArgumentParser(description="Train audio-only Transformer (Model 2)")
     p.add_argument("--preset", choices=["small", "full"], default="full",
                    help="'full' (default, 1009 examples) or 'small' (< 100 examples)")
-    p.add_argument("--d_model",    type=int,   default=None)
-    p.add_argument("--nhead",      type=int,   default=None)
-    p.add_argument("--num_layers", type=int,   default=None)
-    p.add_argument("--dropout",    type=float, default=None)
-    p.add_argument("--lr",         type=float, default=None)
-    p.add_argument("--batch_size", type=int,   default=None)
-    p.add_argument("--epochs",     type=int,   default=None)
-    p.add_argument("--patience",   type=int,   default=None)
+    p.add_argument("--d_model",      type=int,   default=None)
+    p.add_argument("--nhead",        type=int,   default=None)
+    p.add_argument("--num_layers",   type=int,   default=None)
+    p.add_argument("--dropout",      type=float, default=None)
+    p.add_argument("--lr",           type=float, default=None)
+    p.add_argument("--batch_size",   type=int,   default=None)
+    p.add_argument("--epochs",       type=int,   default=None)
+    p.add_argument("--patience",     type=int,   default=None)
+    p.add_argument("--weight_decay",    type=float, default=None)
+    p.add_argument("--label_smoothing", type=float, default=None)
     p.add_argument("--grid_search",         action="store_true")
     p.add_argument("--use_existing_splits", action="store_true",
                    help="Load splits from RES_DIR/splits/ instead of rebuilding")
@@ -367,16 +385,18 @@ def main():
     base    = HPARAM_SMALL if args.preset == "small" else HPARAM_FULL
     hparams = dict(base)
     for key in ["d_model", "nhead", "num_layers", "dropout",
-                "lr", "batch_size", "epochs", "patience"]:
-        val = getattr(args, key)
+                "lr", "batch_size", "epochs", "patience",
+                "weight_decay", "label_smoothing"]:
+        val = getattr(args, key, None)
         if val is not None:
             hparams[key] = val
+    # Ensure label_smoothing has a default even if absent from the preset
+    hparams.setdefault("label_smoothing", 0.0)
 
     print(f"\nHyperparameters (preset='{args.preset}'):")
     for k, v in hparams.items():
-        print(f"  {k:15s}: {v}")
+        print(f"  {k:17s}: {v}")
 
-    # Data
     print("\n[1/5] Building master table...")
     df = build_master_table(verbose=True)
 
@@ -389,19 +409,8 @@ def main():
 
     print("\n[2/5] Auditing spectrograms...")
     audit_spectrograms(df["png_path"].tolist(), verbose=True)
-    # Always use config values — the model works at mel resolution (128×200),
-    # NOT the PNG pixel resolution (400×1000). The resize happens inside
-    # SpectrogramDataset.__getitem__ using these values.
-    f_dim   = cfg.F_DIM    # 128
-    max_len = cfg.MAX_LEN  # 200
-
-    if False:  # silent clip check disabled — audit uses sample
-        from PIL import Image as _I
-        import numpy as _np
-        df = df[df["png_path"].map(
-            lambda p: _np.array(_I.open(p), dtype=_np.float32).max() > 0
-        )].copy()
-        print(f"  Removed {stats['n_silent']} silent clip(s)")
+    f_dim   = cfg.F_DIM
+    max_len = cfg.MAX_LEN
 
     print("\n[3/5] Constructing splits...")
     if args.use_existing_splits:
@@ -425,9 +434,6 @@ def main():
     print(f"  Chance level  : {result['chance_level']:.4f} "
           f"({result['n_present_classes']} classes)")
     print(f"\nOutputs saved to {RES_DIR}/")
-    print("  models/   ← checkpoints (.pt)")
-    print("  results/  ← JSON metrics")
-    print("  figures/  ← training curves + confusion matrices")
 
 
 if __name__ == "__main__":

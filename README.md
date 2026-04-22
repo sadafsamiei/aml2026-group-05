@@ -364,6 +364,86 @@ Preprocessing lifts val F1 but not test F1. The val→test gap widens from ≈0 
 +0.06 for Model 2 — a clear signal that inter-child variance, not feature
 quality, is the dominant bottleneck.
 
+### Regularization sweep on mel
+
+Because training histories showed the classic overfitting signature (train
+loss reaching 0.10–0.25 while val F1 plateaued around 0.28), we ran a
+six-config regularization sweep on mel spectrograms: label smoothing
+ε ∈ {0.0, 0.1}, dropout ∈ {0.5, 0.6, 0.7}, weight_decay ∈ {1e-4, 5e-4},
+and one reduced-capacity variant (d=32, L=1). The sweep was run on fold 0
+with a single seed; the winning config per model was then multi-seeded.
+
+| Model | Config | Test F1 (5 seeds) | Val→Test gap | Notes |
+|---|---|---|---|---|
+| 3 | d=32, L=1, ls=0.0 (canonical) | 0.221 ± 0.013 | +0.031 | original |
+| 3 | d=64, L=2, dropout=0.5, ls=0.1 | 0.240 ± 0.028 | −0.001 | sweep winner |
+
+Two observations. First, the +0.019 test F1 gain for Model 3 is within
+1σ of seed noise, so we do not claim label smoothing materially improves
+the model. Second, the val→test gap closes from +0.031 to effectively
+zero, and the per-seed variance increases from 0.013 to 0.028. Label
+smoothing flattens the target distribution, which makes the model less
+confident and thereby shrinks the val→test discrepancy — but this comes
+at the cost of higher seed-to-seed variability. We report the original
+config (0.221 ± 0.013) as canonical because it is more reproducible and
+does not change the narrative. The sweep confirms that no combination of
+standard regularization techniques we tested breaks the chance-level
+ceiling on mel, consistent with the 7-training-children protocol being
+the binding constraint.
+
+### Metadata ablation — which field contributes most?
+
+Model 3 uses age and gender as a concatenated query vector for attentive
+pooling. To isolate the contribution of each metadata field, we ran a
+three-way ablation: the full query (canonical), age-only (gender zeroed
+at the dataset boundary), and gender-only (age zeroed). Architecture and
+training procedure are identical across configurations; only the
+contents of the meta tensor change. We ran this on both feature types,
+5 seeds per configuration.
+
+**Mel spectrograms** (d=64, L=2, dropout=0.5, ls=0.1):
+
+| Metadata | Test F1 (5 seeds) | Val→Test gap | Δ vs age+gender |
+|---|---|---|---|
+| age + gender | 0.240 ± 0.028 | −0.001 | — |
+| age only | 0.225 ± 0.028 | +0.038 | −0.015 |
+| gender only | 0.215 ± 0.033 | +0.055 | −0.025 |
+
+**wav2vec2** (d=192, L=1, dropout=0.3, ls=0.0):
+
+| Metadata | Test F1 (5 seeds) | Val→Test gap | Δ vs age+gender |
+|---|---|---|---|
+| age + gender | 0.246 ± 0.016 | +0.040 | — |
+| age only | 0.247 ± 0.007 | +0.025 | +0.001 |
+| gender only | 0.221 ± 0.022 | +0.038 | −0.025 |
+
+Two findings emerge, both more conclusive on wav2vec2. First, **age
+carries essentially all of the metadata signal** on wav2vec2: removing
+gender produces no measurable change (0.247 vs 0.246, Δ = +0.001), while
+removing age causes a ~1.5σ drop (0.221 vs 0.246, Δ = −0.025). On mel
+the same ordering holds — gender-only loses more than age-only — but
+the differences are smaller and both within seed noise.
+
+Second, **the age-only wav2vec2 configuration has lower seed variance
+(σ = 0.007) than the full age+gender configuration (σ = 0.016)**. This
+suggests gender adds noise to the query without contributing useful
+signal, consistent with its low information content in this dataset
+(only 2 unique values across 9 participants, vs 5 unique age values).
+
+Why age carries the signal: age maps to 5 distinct query vectors across
+participants, while gender produces only 2. With only 9 training
+children, the gender binary cannot support fine-grained attention
+routing — the query degenerates to "male" or "female" with no
+cross-participant generalisation. Age, even with just 5 values, provides
+enough query diversity for attention to exploit.
+
+Important caveat: we cannot separate "the model benefits from age
+information" from "the model benefits from *any* two-valued discrete
+variable that correlates with some children". With 9 participants the
+signal is low-dimensional enough that a similar effect might arise from
+any metadata field that partitions the training children into
+non-trivial groups.
+
 ---
 
 ## Interpretation
@@ -429,9 +509,13 @@ The combination of 7 training children, 1 held-out test child, and ~570
 training examples is too restrictive for reliable cross-participant
 generalisation regardless of architecture or features. Each child has a unique
 acoustic profile; the model cannot reliably distinguish context-specific from
-speaker-specific patterns with so few training speakers. The classic overfitting
-signature appears in every training curve: train loss drops to ~0.05–0.15 while
-val F1 plateaus near chance.
+speaker-specific patterns with so few training speakers. The training
+curves show classic overfitting: train loss drops to 0.10–0.25 depending
+on regularization strength while val macro-F1 peaks around 0.28–0.31
+early in training and decays or plateaus afterward. Our regularization
+sweep (see Results → Regularization sweep on mel) confirms that standard
+tools — label smoothing, dropout up to 0.7, weight decay up to 5e-4 —
+do not break this ceiling, only reshape its symptoms.
 
 ### Why EXTEV and MOVE are the hardest classes on mel
 
@@ -570,6 +654,16 @@ our data and should not be made:
   child identity, so adding it would effectively reintroduce child_id
   as a feature — a confound we explicitly excluded on privacy and
   leakage grounds.
+- **Metadata ablation does not isolate pooling from metadata.** Our
+  Model 2 vs Model 3 comparison differs in two dimensions
+  simultaneously: pooling (mean vs attentive) and metadata (none vs
+  age+gender). The three-way metadata ablation (age+gender / age_only /
+  gender_only, in Results → Metadata ablation) isolates contributions
+  *within* the attentive architecture, but does not tell us whether a
+  mean-pool model augmented with age+gender (concat to logits) would
+  match Model 3, or whether attention with a learned query (no
+  metadata) would match Model 2. A fully factorial 2×2 comparison was
+  out of scope.
 
 ---
 
@@ -581,12 +675,7 @@ aml2026-group-05/
 │   ├── config.py          ← paths, hyperparameters, preprocessing flags
 │   ├── data_utils.py      ← splits, datasets, per-clip norm, SpecAugment
 │   ├── models.py          ← AudioTransformer + AttentivePoolingTransformer
-│   └── train_utils.py     ← training loop, evaluation, 
-├── experiments/
-│    ├── class_by_language.py
-│    ├── cm_comparison.py
-│    ├── ensemble_seeds.py
-sanity checks
+│   └── train_utils.py     ← training loop, evaluation, sanity checks
 └── scripts/
     ├── generate_spectrograms.py
     ├── train_transformer_audio.py  ← Model 2 + grid search

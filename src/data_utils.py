@@ -15,6 +15,19 @@ Label mapping (new 2026 scheme):
   MOVE  ← WALK, CARRIED, ARRIVES, LEAVES, FALLS
   INTER ← CONV, OBSERV_INTER, SEEK_INTER, GROOMED, AGGR
   EXTEV ← FOOD, REST, SLE
+
+Metadata ablation support
+-------------------------
+MetadataSpectrogramDataset honours the METADATA_MODE config flag:
+  - "age_gender" : use both age and gender (canonical)
+  - "age_only"   : pass real age, zero out gender
+  - "gender_only": pass real gender, zero out age
+  - "none"       : zero out both (equivalent to use_external_meta=False)
+
+The dataset still returns a (2,)-dim meta tensor in every mode, so
+neither the model nor the training loop needs any changes — only the
+dataset constructs different inputs. This lets us isolate each
+metadata feature's contribution without retraining the architecture.
 """
 
 import collections
@@ -37,6 +50,7 @@ from config import (
     USE_MFCC, USE_PRETRAINED, USE_PER_CLIP_NORM,
     USE_SPECAUGMENT, SPECAUG_TIME_MASKS, SPECAUG_TIME_WIDTH,
     SPECAUG_FREQ_MASKS, SPECAUG_FREQ_WIDTH,
+    METADATA_MODE,
 )
 
 
@@ -66,32 +80,15 @@ def build_master_table(
     spec_dir: Path = SPEC_DIR,
     verbose: bool = True,
 ) -> pd.DataFrame:
-    """
-    Load the 2026 contexts CSV, apply label mapping, resolve PNG paths,
-    and return a clean DataFrame.
-
-    The 2026 CSV format differs from the pilot CSV:
-      - Column 'audio_ID'  (e.g. 'audio_0000') — no .wav suffix
-      - Timestamps in seconds (start_sec, end_sec, duration_sec)
-      - No language filter — all languages are part of the dataset
-      - Direct filename matching: audio_ID + '.png' → spectrogram path
-
-    Returns
-    -------
-    pd.DataFrame with columns:
-        audio_ID, audio_file, start_sec, end_sec, duration_sec,
-        child, lang, gender, age, context_label, class4, png_path, png_exists
-    """
+    """Load the 2026 contexts CSV, apply label mapping, resolve PNG paths."""
     df = pd.read_csv(contexts_csv)
 
-    # Drop index column if present
     if "Unnamed: 0" in df.columns:
         df = df.drop(columns=["Unnamed: 0"])
 
     if verbose:
         print(f"Loaded {len(df)} rows from {contexts_csv.name}")
 
-    # Label mapping
     df["class4"] = df["context_label"].apply(map_label)
 
     excluded = df[df["class4"].isna()]["context_label"].value_counts()
@@ -102,10 +99,8 @@ def build_master_table(
 
     df = df[df["class4"].notna()].reset_index(drop=True)
 
-    # Add audio_file column (with .wav suffix) for compatibility
     df["audio_file"] = df["audio_ID"] + ".wav"
 
-    # PNG path: direct filename match (no positional assignment needed)
     df["png_path"]   = df["audio_ID"].apply(
         lambda aid: str(spec_dir / f"{aid}.png")
     )
@@ -150,10 +145,7 @@ def build_master_table(
 # ---------------------------------------------------------------------------
 
 def audit_spectrograms(png_paths: list, verbose: bool = True) -> dict:
-    """
-    Scan a small sample of PNGs to determine format, dimensions, and pixel range.
-    Samples 20 files only — sufficient to confirm all images are consistent.
-    """
+    """Scan a small sample of PNGs to determine format, dimensions, and pixel range."""
     import random as _random
 
     n_total = len(png_paths)
@@ -182,7 +174,7 @@ def audit_spectrograms(png_paths: list, verbose: bool = True) -> dict:
         "width_p50"  : int(np.median(widths)),
         "width_p95"  : p95_width,
         "width_max"  : max(widths),
-        "n_silent"   : sum(v == 0 for v in max_vals),  # from 20-file sample
+        "n_silent"   : sum(v == 0 for v in max_vals),
     }
 
     if verbose:
@@ -207,10 +199,7 @@ def audit_spectrograms(png_paths: list, verbose: bool = True) -> dict:
 # ---------------------------------------------------------------------------
 
 def check_metadata_viability(df: pd.DataFrame, verbose: bool = True) -> dict:
-    """
-    Determine whether age and gender can safely be used as metadata inputs.
-    Returns dict with viability flags and recommended USE_EXTERNAL_META value.
-    """
+    """Determine whether age and gender can safely be used as metadata inputs."""
     n_children       = df["child"].nunique()
     n_unique_ages    = df.groupby("child")["age"].first().nunique()
     n_unique_genders = df.groupby("child")["gender"].first().nunique()
@@ -277,28 +266,19 @@ def determine_eval_protocol(df: pd.DataFrame) -> str:
 def build_splits(df: pd.DataFrame, protocol: str,
                  k_folds: int = 5, val_frac: float = 0.15,
                  test_frac: float = 0.15, save: bool = True) -> list:
-    """
-    Construct train/val/test splits. Returns list of (train, val, test) tuples.
-    For 'holdout': one tuple. For 'lopo'/'kfold': one tuple per fold.
-    """
+    """Construct train/val/test splits."""
     SPLITS_DIR.mkdir(parents=True, exist_ok=True)
     folds = []
 
-    # ── SCENARIO A: Participant-disjoint holdout (≥5 participants) ─────────
     if protocol == "holdout":
         random.seed(RANDOM_SEED)
         children = list(df["child"].unique())
-
-        # Sort children by size so the two largest go to test and val
-        # (they have the most balanced class distributions by sheer volume),
-        # and remaining children form the training set.
         child_sizes = df.groupby("child").size().sort_values(ascending=False)
         children_by_size = child_sizes.index.tolist()
 
         n        = len(children_by_size)
         n_test   = max(1, round(n * test_frac))
         n_val    = max(1, round(n * val_frac))
-        # Largest children → test, second largest → val, rest → train
         test_ch  = children_by_size[:n_test]
         val_ch   = children_by_size[n_test:n_test + n_val]
         train_ch = children_by_size[n_test + n_val:]
@@ -320,7 +300,6 @@ def build_splits(df: pd.DataFrame, protocol: str,
             val.to_csv(SPLITS_DIR   / "val.csv",   index=False)
             test.to_csv(SPLITS_DIR  / "test.csv",  index=False)
 
-    # ── SCENARIO B: LOPO (3–4 participants) ────────────────────────────────
     elif protocol == "lopo":
         children = list(df["child"].unique())
         for i, test_child in enumerate(children):
@@ -339,7 +318,6 @@ def build_splits(df: pd.DataFrame, protocol: str,
                 val.to_csv(fold_dir   / "val.csv",   index=False)
                 test.to_csv(fold_dir  / "test.csv",  index=False)
 
-    # ── SCENARIO C: Stratified k-fold (< 3 participants, fallback) ─────────
     else:
         skf = StratifiedKFold(n_splits=k_folds, shuffle=True,
                               random_state=RANDOM_SEED)
@@ -410,17 +388,9 @@ def load_splits(protocol: str, k_folds: int = 5) -> list:
 
 def load_png(png_path: str, target_height: int = None,
             target_width: int = None) -> np.ndarray:
-    """
-    Load a spectrogram PNG → float32 (F, T) in [0, 1].
-    Converts RGB/RGBA to grayscale. Resizes if target dimensions are given.
-
-    Uses a `with` block so the file handle is released immediately. Without
-    this, PIL's lazy loader can leave file descriptors open long enough for
-    FD exhaustion on larger datasets, which manifests as a silent hang on
-    later reads.
-    """
+    """Load a spectrogram PNG → float32 (F, T) in [0, 1]."""
     with Image.open(png_path) as img:
-        img.load()  # force decode so the file can be closed
+        img.load()
         if img.mode in ("RGB", "RGBA"):
             img = img.convert("L")
         if target_height is not None or target_width is not None:
@@ -436,35 +406,7 @@ def load_png(png_path: str, target_height: int = None,
 # ---------------------------------------------------------------------------
 
 class SpectrogramDataset(Dataset):
-    """
-    Audio-only dataset (Model 2).
-    Returns: (x, pad_mask, label)
-      x        : (max_len, f_dim)  float32
-      pad_mask : (max_len,)        bool — True = padded frame
-      label    : ()                int64
-
-    Spectrograms are preloaded into RAM at __init__ time. With ~570 train
-    clips × 230 × 128 × 4 bytes ≈ 67 MB the whole cache is comfortable on
-    any GPU node, eliminates per-batch PNG decoding overhead, and sidesteps
-    file-descriptor / mount / PIL-handle issues that can hang training.
-
-    Preprocessing pipeline (controlled by config flags):
-
-      1. PNG decode → float [0, 1] → (max_len, f_dim) tensor (cached)
-      2. Per-clip mean/variance normalisation along the time axis
-         (USE_PER_CLIP_NORM). Removes loudness/timbre drift across
-         children, the dominant nuisance variable in participant-disjoint
-         evaluation. Vectorised over the cache.
-      3. SpecAugment time + frequency masking (USE_SPECAUGMENT, train only)
-         applied stochastically inside __getitem__. Forces invariance to
-         specific time/frequency regions.
-
-    Parameters
-    ----------
-    train : if True, SpecAugment is applied in __getitem__ (when enabled
-            via config). Set False for val/test so evaluation is
-            deterministic. Defaults to False.
-    """
+    """Audio-only dataset (Model 2)."""
 
     def __init__(self, split_df, label_encoder, max_len, f_dim,
                  train: bool = False):
@@ -474,34 +416,25 @@ class SpectrogramDataset(Dataset):
         self.f_dim         = f_dim
         self.train         = train
 
-        # Preload every input into a single contiguous tensor of
-        # shape (N, max_len, f_dim). One-time cost: ~1–2s for 569 clips.
-        # Supports three input modes: pretrained embeddings, MFCC, or mel spectrogram.
         n = len(self.records)
         self._cache = torch.empty((n, max_len, f_dim), dtype=torch.float32)
         for i in range(n):
             audio_id = self.records.iloc[i]["audio_ID"]
             if USE_PRETRAINED:
                 emb_path = str(PRETRAINED_DIR / f"{audio_id}.npy")
-                feat = np.load(emb_path)                     # (768, max_len)
-                self._cache[i] = torch.from_numpy(feat.T)    # (max_len, 768)
+                feat = np.load(emb_path)
+                self._cache[i] = torch.from_numpy(feat.T)
             elif USE_MFCC:
                 mfcc_path = str(MFCC_DIR / f"{audio_id}.npy")
-                feat = np.load(mfcc_path)                    # (f_dim, max_len)
-                self._cache[i] = torch.from_numpy(feat.T)    # (max_len, f_dim)
+                feat = np.load(mfcc_path)
+                self._cache[i] = torch.from_numpy(feat.T)
             else:
                 png_path = self.records.iloc[i]["png_path"]
                 spec = load_png(png_path,
                                 target_height=f_dim,
-                                target_width=max_len)        # (f_dim, max_len)
-                self._cache[i] = torch.from_numpy(spec.T)    # (max_len, f_dim)
+                                target_width=max_len)
+                self._cache[i] = torch.from_numpy(spec.T)
 
-        # ── Per-clip normalisation (vectorised over the whole cache) ────
-        # Mean/std along the time axis (dim=1) per clip per feature, then
-        # standardise. Done once at construction so the cost is amortised
-        # across all epochs. After this, the per-clip mean is 0 and std is
-        # 1 along time, which is also why SpecAugment uses 0 as the
-        # mask-fill value below.
         if USE_PER_CLIP_NORM:
             mean = self._cache.mean(dim=1, keepdim=True)
             std  = self._cache.std (dim=1, keepdim=True).clamp(min=1e-6)
@@ -511,12 +444,6 @@ class SpectrogramDataset(Dataset):
         return len(self.records)
 
     def _spec_augment(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Apply SpecAugment time + frequency masking to a single clip.
-        Operates on a CLONE of the cached tensor — never the cache
-        itself, which is shared across epochs and must stay immutable.
-        Masked values are set to 0.0 (the per-clip mean after step 2).
-        """
         x = x.clone()
         T, F = x.shape
 
@@ -538,12 +465,11 @@ class SpectrogramDataset(Dataset):
 
     def __getitem__(self, idx):
         row = self.records.iloc[idx]
-        # Pure RAM lookup — no file I/O during training.
-        x        = self._cache[idx]
+        x = self._cache[idx]
         if self.train and USE_SPECAUGMENT:
             x = self._spec_augment(x)
         pad_mask = torch.zeros(self.max_len, dtype=torch.bool)
-        label    = self.label_encoder[row["class4"]]
+        label = self.label_encoder[row["class4"]]
         return (
             x,
             pad_mask,
@@ -560,8 +486,25 @@ class SpectrogramDataset(Dataset):
 class MetadataSpectrogramDataset(SpectrogramDataset):
     """
     Metadata-aware dataset (Model 3).
+
     Returns: (x, pad_mask, label, meta)
       meta : (2,) float32 — [age_normalised, gender_binary]
+
+    The contents of the meta tensor depend on the module-level
+    METADATA_MODE flag imported from config.py. The tensor is always
+    (2,)-dim so the model and training loop never change; we just zero
+    out a dimension when that feature is being ablated.
+
+    METADATA_MODE values:
+      "age_gender"  : [age_norm,  gender_val]  — canonical
+      "age_only"    : [age_norm,  0.0       ]  — gender ablated
+      "gender_only" : [0.0,       gender_val]  — age ablated
+      "none"        : [0.0,       0.0       ]  — both ablated
+                     (also happens when use_external_meta=False, which
+                      falls through the same branch below.)
+
+    This lets us run a clean 3-point metadata ablation without editing
+    the model or the training scripts.
     """
 
     def __init__(self, split_df, label_encoder, max_len, f_dim,
@@ -570,18 +513,41 @@ class MetadataSpectrogramDataset(SpectrogramDataset):
         super().__init__(split_df, label_encoder, max_len, f_dim, train=train)
         self.use_external_meta = use_external_meta
         self.meta_stats        = meta_stats or {}
+        # Snapshot the mode at construction time so a later config edit
+        # cannot silently change what a live dataset returns.
+        self.metadata_mode     = METADATA_MODE
+
+        # Validate the flag early — typos here would otherwise silently
+        # fall through to the "none" branch.
+        if self.metadata_mode not in ("age_gender", "age_only",
+                                       "gender_only", "none"):
+            raise ValueError(
+                f"METADATA_MODE={self.metadata_mode!r} is not recognised. "
+                f"Must be one of: age_gender, age_only, gender_only, none."
+            )
 
     def __getitem__(self, idx):
         x, pad_mask, label = super().__getitem__(idx)
 
-        if self.use_external_meta and self.meta_stats:
+        if self.use_external_meta and self.meta_stats \
+                and self.metadata_mode != "none":
             row        = self.records.iloc[idx]
             age_mean   = self.meta_stats["age_mean"]
             age_std    = self.meta_stats["age_std"]
             gender_map = self.meta_stats["gender_map"]
+
             age_norm   = (float(row["age"]) - age_mean) / age_std
             gender_val = gender_map.get(str(row.get("gender", "U")), 0.5)
-            meta = torch.FloatTensor([age_norm, gender_val])
+
+            # Zero out the ablated field based on mode. This branch runs
+            # ONLY when use_external_meta is True AND mode is not "none",
+            # so we know at least one field is live.
+            if self.metadata_mode == "age_only":
+                meta = torch.FloatTensor([age_norm, 0.0])
+            elif self.metadata_mode == "gender_only":
+                meta = torch.FloatTensor([0.0, gender_val])
+            else:  # "age_gender" (canonical)
+                meta = torch.FloatTensor([age_norm, gender_val])
         else:
             meta = torch.zeros(2, dtype=torch.float32)
 
