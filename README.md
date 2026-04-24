@@ -45,13 +45,20 @@ most 10 distinct query vectors across the whole dataset.
 
 | # | Model | Status |
 |---|---|---|
-| 1 | Logistic Regression (Spectrogram + MFCC + Δ + ΔΔ features) | In progress |
+| 1 | Logistic Regression (MFCC summary features) | ✅ Done |
 | 2 | Audio-only Transformer (mean pooling) | ✅ Done |
 | 3 | Attentive Pooling Transformer (metadata query) | ✅ Done |
 
-**Model 1** — clip-level MFCC summary features (mean + std + delta + delta-delta
-of 20 coefficients → feature vector per clip). `LogisticRegression(class_weight='balanced')`,
-C tuned on val macro-F1.
+**Model 1** — clip-level MFCC summary features. For each clip we extract
+20 MFCC coefficients with librosa, then collapse the time axis into mean
+and standard deviation per coefficient → 40-dimensional summary vector.
+A delta-MFCC variant (adding mean and std of first-order temporal
+differences, 80 dimensions) was tested as an ablation; see Results →
+Model 1. Pipeline: `StandardScaler → LogisticRegression(class_weight='balanced',
+solver='lbfgs')`. The inverse regularization strength `C` is tuned by
+inner LeaveOneGroupOut CV over the seven training children, then the
+best `C` is refit on `train ∪ val` for test reporting and on `train`
+alone for honest val reporting.
 
 **Model 2** — `input_proj(F→d)` → `TransformerEncoder(d, heads=4, L)` →
 masked mean pool → `Linear(d→4)`. Three input feature types evaluated:
@@ -204,30 +211,85 @@ python scripts/train_multiseed.py --model attn --seeds 42 123 456 789 2024 \
 **Protocol**: participant-disjoint holdout. All Transformer numbers are
 mean ± std across 5 seeds. Chance = 0.25.
 
-### Full comparison across all feature types
+### Headline comparison — every model on every feature source
 
-Each cell uses the config grid-selected for that (model, feature-type) pair.
+Each cell uses the model-appropriate representation of the same underlying
+feature source. Model 1 consumes a fixed-length summary vector (mean+std
+along the time axis); Models 2 and 3 consume the full `(time, features)`
+sequence and learn temporal pooling internally.
 
-| Features | Model 2 Test F1 | Model 3 Test F1 | Δ (3 − 2) |
-|---|---|---|---|
-| Mel spectrogram | **0.249 ± 0.020** | 0.221 ± 0.013 | −0.028 |
-| MFCC + Δ + ΔΔ | 0.238 ± 0.039 | 0.237 ± 0.026 | −0.001 |
-| **wav2vec2** | 0.219 ± 0.018 | **0.246 ± 0.016** | **+0.027** |
-| Chance | 0.250 | 0.250 | — |
+| Feature source | Model 1 (LR on summary) | Model 2 (mean-pool transformer) | Model 3 (attentive transformer) | Best |
+|---|---|---|---|---|
+| MFCC (40-dim summary / 230×128 sequence) | **0.253 ± 0.000** | 0.238 ± 0.039 | 0.237 ± 0.026 | M1 |
+| **Mel** (256-dim summary / 230×128 sequence) | **0.277 ± 0.000** | 0.249 ± 0.020 | 0.221 ± 0.013 | **M1** |
+| wav2vec2 (1536-dim summary / T×768 sequence) | **0.263 ± 0.000** | 0.219 ± 0.018 | 0.246 ± 0.016 | M1 |
+| Chance | 0.250 | 0.250 | 0.250 | — |
 
-The sign of the Model 3 vs Model 2 difference **flips** across feature types:
-on mel spectrograms mean pooling wins, but on wav2vec2 attentive pooling wins.
-Both differences are roughly 1.5σ in magnitude given σ_seed ≈ 0.016–0.020.
+The headline finding: **Model 1 wins on every feature source.** A
+logistic regression on per-dimension mean and standard deviation matches
+or exceeds both transformer models on every input representation we
+tested. The largest single result of the project is Model 1 on mel
+summary statistics at 0.277 — 0.028 above Model 2 mel and 0.056 above
+Model 3 mel.
 
-### Final reported numbers (feature-type-specific grid-selected configs)
+**What this means.** On this 569-clip, 7-training-children dataset,
+transformer-style temporal modeling adds no measurable accuracy over
+collapsing the time axis to first and second moments. Two
+non-exclusive interpretations are consistent with the data:
+
+1. **The signal is in clip-level summary statistics.** Per-dimension
+   mean and std along time already capture most of what distinguishes
+   contexts in this dataset. The class-discriminative information is
+   in the global spectral/embedding statistics, not in the temporal
+   ordering of frames.
+2. **The transformers are over-parameterised for the data.** Even the
+   smallest config (Model 3 mel d=32, L=1) has 26K parameters and 569
+   training clips → ~46 examples per parameter. The deep models can
+   match the linear ceiling on the training children but cannot beat
+   it under participant-disjoint evaluation. The per-class breakdown
+   below shows that this is plausible: even the deep models inherit
+   the same Tagalog INTER prior and class-imbalance pattern as the
+   linear baseline.
+
+We discuss the implication for our project narrative in the
+Interpretation section: this is not the conclusion we expected, but it
+is the conclusion the data supports under our chosen evaluation
+protocol.
+
+**On the seed variance:** σ = 0.000 across seeds for Model 1 is correct,
+not a bug. Logistic regression with the lbfgs solver is deterministic
+given the data, the splits are identical across seeds, and there is no
+data augmentation. The 5-seed loop serves as a stability check for the
+pipeline rather than a variance estimate. We retain the 5-seed
+protocol for consistency with how Models 2 and 3 are reported.
+
+**On the Model 2 vs Model 3 architectural comparison:** holding
+features fixed and ignoring Model 1, the sign of the Model 3 vs Model 2
+difference **flips** across feature types — on mel mean pooling wins
+by 0.028; on wav2vec2 attentive pooling wins by 0.027. Both
+differences are roughly 1.5σ given σ_seed ≈ 0.016–0.020. The
+explanation is documented in the Interpretation section as
+*attention concentration* (wav2vec2 attention saturates on a single
+frame; mel attention saturates on uniform).
+
+### Final reported numbers (model × feature-type)
+
+Model 1 entries collapse the time axis to mean+std per dimension before
+LR. Models 2 and 3 entries use the full sequence and the architectures'
+learned pooling. C is selected by inner LeaveOneGroupOut CV over the
+training children for Model 1; transformer hyperparameters are selected
+by per-feature-type grid search on val macro-F1 (see Hyperparameter
+Selection).
 
 | Model | Features | Config | Params | Val F1 | Test F1 |
 |---|---|---|---|---|---|
-| 1 — Logistic Regression | MFCC + Δ + ΔΔ | — | — | — | 0.238 ± 0.039 |
+| 1 — Logistic Regression | MFCC (40-dim summary) | C=10, balanced | 164 | 0.240 ± 0.000 | 0.253 ± 0.000 |
+| **1 — Logistic Regression** | **Mel (256-dim summary)** | C=0.01, balanced | 1,028 | 0.232 ± 0.000 | **0.277 ± 0.000** |
+| 1 — Logistic Regression | wav2vec2 (1536-dim summary) | C=0.01, balanced | 6,148 | 0.253 ± 0.000 | 0.263 ± 0.000 |
 | 2 — Audio Transformer | mel | d=64, L=2, drop=0.5 | 126K | 0.270 ± 0.022 | 0.249 ± 0.020 |
 | 2 — Audio Transformer | wav2vec2 | d=64, L=2, drop=0.5 | 167K | 0.294 ± 0.010 | 0.219 ± 0.018 |
 | 3 — Attentive Pooling | mel | d=32, L=1, drop=0.3 | 26K | 0.252 ± 0.045 | 0.221 ± 0.013 |
-| **3 — Attentive Pooling** | **wav2vec2** | d=192, L=1, drop=0.3 | 648K | 0.286 ± 0.018 | **0.246 ± 0.016** |
+| 3 — Attentive Pooling | wav2vec2 | d=192, L=1, drop=0.3 | 648K | 0.286 ± 0.018 | 0.246 ± 0.016 |
 | Chance | — | — | — | 0.250 | 0.250 |
 
 ### wav2vec2 per-seed breakdown (Model 2, d=64 L=2)
@@ -256,6 +318,74 @@ Every Model 3 seed trained past epoch 11 (best epochs 4, 48, 4, 22, 13).
 Compared to the original d=32 Model 3 run where three of five seeds
 scored < 0.23, the d=192 configuration has substantially tighter variance
 and no degenerate seeds.
+
+### Model 1 — logistic regression on summary statistics across feature sources
+
+For each feature source, we collapse the time axis into per-dimension
+mean and standard deviation, producing a fixed-length summary vector
+per clip. The same pipeline applies to all three sources:
+`StandardScaler → LogisticRegression(class_weight='balanced',
+solver='lbfgs')`. The inverse regularization strength `C` is tuned by
+inner LeaveOneGroupOut CV over the seven training children, with the
+C grid `np.logspace(-4, 4, 9)`. The selected `C` is then refit on
+`train ∪ val` for test reporting and on `train` alone for honest val
+reporting.
+
+| Feature source | Feat dim | Selected C | Val F1 | Test F1 | Val→Test gap |
+|---|---|---|---|---|---|
+| MFCC (mean+std, no Δ) | 40 | 10 | 0.240 | 0.253 | −0.013 |
+| **Mel (mean+std)** | 256 | 0.01 | 0.232 | **0.277** | −0.045 |
+| wav2vec2 (mean+std) | 1536 | 0.01 | 0.253 | 0.263 | −0.010 |
+| MFCC + Δ (mean+std, ablation) | 80 | 0.01 | 0.235 | 0.229 | +0.006 |
+
+Three findings.
+
+**1. Mel summary statistics give the best Model 1 result (0.277).**
+Mel beats MFCC summary by +0.024 and wav2vec2 summary by +0.014.
+Mel preserves the full 128-bin frequency resolution; MFCC compresses
+this to 20 cepstral coefficients via a discrete cosine transform,
+discarding information that — in this dataset — turns out to be
+class-discriminative. wav2vec2 features are richer per dimension but
+the 1536-dim summary vector with 569 training clips drives the inner
+CV to select strong regularization (C = 0.01), capping how much of
+that richness LR can exploit.
+
+**2. Adding delta-MFCC summary features hurts test F1 by 0.024**
+while doubling the feature count. The inner CV responds by selecting
+much stronger regularization (C = 0.01 with deltas vs C = 10
+without), suggesting the deltas add covariate noise rather than
+class-discriminative signal in the linear summary regime. The
+canonical Model 1 MFCC configuration is therefore the simpler
+40-feature version.
+
+**3. Per-class breakdowns reproduce the Tagalog INTER prior across
+all three feature sources** — the same imbalance pattern that drives
+Models 2 and 3 INTER over-prediction:
+
+| Class | True test rate | Tagalog train rate | M1 mel F1 | M1 wav2vec2 F1 | M1 MFCC F1 |
+|---|---|---|---|---|---|
+| EXTEV | 18.6% | 22.1% | 0.220 | 0.228 | 0.176 |
+| **INTER** | **29.4%** | **46.9%** | **0.396** | **0.391** | **0.388** |
+| MOVE | 17.5% | 21.4% | 0.263 | 0.188 | 0.207 |
+| PLTOY | 34.6% | 9.7% | 0.228 | 0.247 | 0.241 |
+
+INTER F1 is the highest of any class on every Model 1 configuration,
+despite INTER not being the most common class on the test set. PLTOY
+(the modal test class at 34.6%) gets the lowest precision on every
+configuration because it is rare in Tagalog training (9.7%). The fact
+that this pattern reproduces from a 40-feature linear baseline through
+a 648K-parameter attentive transformer is strong evidence that the
+language-prior effect is a property of the data partition, not of
+any particular architecture.
+
+**Multi-seed reporting**: σ = 0.000 across all 5 seeds for every Model
+1 configuration. Logistic regression with the lbfgs solver is fully
+deterministic given the data, the splits are identical across seeds,
+and the LR pipeline contains no stochastic augmentation (unlike the
+transformers, which use SpecAugment and dropout). The 5-seed loop
+here serves as a defensive stability check on the pipeline rather
+than a variance estimate. We retain it for protocol consistency with
+how Models 2 and 3 are reported.
 
 ### Architecture ablation on mel — isolating pooling from capacity
 
@@ -448,9 +578,23 @@ non-trivial groups.
 
 ## Interpretation
 
-### The project narrative in four steps
+### The project narrative in five steps
 
-**Step 1 — From-scratch features: both models near chance, Model 2 slightly ahead.**
+**Step 0 — The linear baseline beats both transformers on every feature
+source.** Logistic regression on time-collapsed summary statistics
+(mean+std per dimension along the time axis) reaches 0.253 on MFCC,
+**0.277 on mel**, and 0.263 on wav2vec2 — exceeding both Models 2 and 3
+on every feature source we tested. The Model 1 mel result (0.277) is the
+single highest test F1 of the entire project, achieved by a 1,028-parameter
+linear classifier. This is unexpected and is the main finding of the
+project: on this dataset, transformer-style temporal modeling adds no
+measurable accuracy over per-dimension first and second moments. We
+discuss the implications below in Steps 1–4 and in Limitations. The
+remainder of the narrative concerns the Model 2 vs Model 3 architectural
+comparison, which is interesting in its own right but should be read in
+the context of this baseline result.
+
+**Step 1 — From-scratch features: both transformers near chance, Model 2 slightly ahead.**
 With mel spectrograms or MFCCs, Models 2 and 3 both land near 0.22–0.25.
 On mel Model 2 beats Model 3 by 0.028; on MFCC the two are
 indistinguishable (|Δ| = 0.001). Both models struggle to exceed the 0.25
@@ -516,6 +660,21 @@ early in training and decays or plateaus afterward. Our regularization
 sweep (see Results → Regularization sweep on mel) confirms that standard
 tools — label smoothing, dropout up to 0.7, weight decay up to 5e-4 —
 do not break this ceiling, only reshape its symptoms.
+
+The Model 1 results sharpen this picture. A 1,028-parameter linear
+classifier on per-dimension mean+std of mel reaches 0.277 — higher than
+either transformer on any feature source. This is consistent with two
+related interpretations. (a) **The class-discriminative information in
+this dataset lives in clip-level summary statistics**, not in temporal
+ordering: averaging away the time axis loses very little signal, and
+adding capacity for temporal modeling buys no measurable accuracy.
+(b) **The transformers are over-parameterised relative to the data**:
+even Model 3 mel at d=32, L=1 has 26K parameters and 569 training
+clips, ~46 examples per parameter, and the test child contributes
+0 examples — under participant-disjoint evaluation, the deep models
+match the linear ceiling on training children but cannot beat it on
+the held-out child. The two interpretations are not mutually exclusive
+and are both consistent with the observed pattern.
 
 ### Why EXTEV and MOVE are the hardest classes on mel
 
@@ -623,6 +782,11 @@ our data and should not be made:
   is also a single held-out language.
 - *"Hyperparameters were selected for the target language."* They were
   selected on Shipibo validation, then reported on Tagalog test.
+- *"The transformer architectures are appropriate for this dataset."*
+  Logistic regression on time-collapsed summary statistics matches or
+  exceeds both transformers on every feature source we tested. The
+  added complexity of Models 2 and 3 produces no measurable accuracy
+  benefit over the linear baseline under our evaluation protocol.
 
 ### What the protocol does support
 
