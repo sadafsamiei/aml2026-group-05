@@ -10,9 +10,9 @@ the dB range [-80, 0] to [0, 255]. The model loads these at native
 resolution and resizes to (MAX_LEN, F_DIM) inside SpectrogramDataset.
 
 Usage:
-    python scripts/generate_spectrograms.py
-    python scripts/generate_spectrograms.py --limit 10
-    python scripts/generate_spectrograms.py --skip_existing
+    python utils/generate_spectrograms.py
+    python utils/generate_spectrograms.py --limit 10
+    python utils/generate_spectrograms.py --skip_existing
 """
 
 import argparse

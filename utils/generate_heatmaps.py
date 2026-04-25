@@ -5,9 +5,9 @@ Generate viridis mel spectrogram PNGs.
 Saves to RES_DIR/spectrograms/audio_XXXX.png
 
 Usage:
-    python scripts/generate_heatmaps.py
-    python scripts/generate_heatmaps.py --limit 10
-    python scripts/generate_heatmaps.py --skip_existing
+    python utils/generate_heatmaps.py
+    python utils/generate_heatmaps.py --limit 10
+    python utils/generate_heatmaps.py --skip_existing
 """
 
 import argparse
