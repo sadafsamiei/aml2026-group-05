@@ -871,7 +871,7 @@ RES_DIR = /home/renku/work/data/   ← READ/WRITE
 
 **Participant-disjoint evaluation** — the two largest, most class-balanced
 children (child_6 n=269, child_2 n=171) are assigned to test and val. This
-yields a 56/17/27 clip ratio rather than 70/15/15, a necessary deviation given
+yields a 56/17/27 clip ratio which is a necessary deviation given
 9 unequal-sized participants. Any alternative assignment either misses classes
 in held-out splits or places more children in test than the dataset can support.
 
