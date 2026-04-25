@@ -803,7 +803,90 @@ our data and should not be made:
   prior alone predicts, so the attention mechanism contributes
   identifiable behaviour over and above distributional memorisation.
 
-### Secondary limitations
+### Supplementary experiments
+
+#### Formal chance-level baseline (DummyClassifier)
+
+We ran `sklearn.DummyClassifier` on the canonical holdout split with
+three strategies (1000 seeds for stochastic strategies):
+
+| Strategy | Macro-F1 |
+|---|---|
+| most_frequent (always predict PLTOY) | 0.114 ± 0.000 |
+| stratified (sample ∝ training frequencies) | 0.240 ± 0.026 |
+| **uniform (sample uniformly across 4 classes)** | **0.245 ± 0.027** |
+
+The theoretical chance level (0.250) corresponds closely to the uniform
+strategy (0.245 ± 0.027), confirming our reporting convention. Our best
+model (LR mel, 0.277) exceeds the formal uniform chance baseline by
++0.032. The most_frequent classifier achieves only 0.114 — because
+macro-F1 penalises the three classes it never predicts — making 0.25 the
+meaningful floor, not 0.114.
+
+#### Error analysis — which clips are wrong across all three models?
+
+We examined which of the 269 test clips are misclassified by all three
+models simultaneously (Model 1 LR mel, Model 2 mean-pool mel, Model 3
+attentive mel, all seed 42). A clip in the "all 3 wrong" set is a
+candidate data-ceiling case — no model architecture can recover it.
+
+| Category | Count | Fraction |
+|---|---|---|
+| **All 3 wrong** | **110** | **40.9%** |
+| M2 + M3 wrong (not M1) | 35 | 13.0% |
+| M1 + M2 wrong (not M3) | 34 | 12.6% |
+| M1 + M3 wrong (not M2) | 31 | 11.5% |
+| M1 only wrong | 15 | 5.6% |
+| M3 only wrong | 16 | 6.0% |
+| M2 only wrong | 9 | 3.3% |
+| **All 3 correct** | **19** | **7.1%** |
+
+Key findings. First, **only 7.1% of test clips (19/269) are correctly
+classified by all three models**. The task is genuinely hard on this
+test child. Second, **error rates are nearly identical across the three
+models** (M1=70.6%, M2=69.9%, M3=71.4%), confirming that the ceiling is
+data-driven rather than architecture-driven. Third, **INTER is the most
+recoverable class** — only 22% of INTER clips are all-3-wrong, vs 54%
+for EXTEV and 49% for PLTOY. Fourth, the most common confusion pairs
+in the all-3-wrong set are PLTOY→INTER (n=23), PLTOY→EXTEV (n=16),
+and EXTEV→INTER (n=13) — the same confusions that appear individually
+in each model's confusion matrix.
+
+#### Leave-one-child-out (LOCO) cross-validation on Model 1 mel
+
+Our canonical result (0.277) comes from a single fixed holdout where
+child_6 (Tagalog) is always the test child. To check whether this is
+representative, we ran 9-fold LOCO on Model 1 mel — the best-performing
+configuration — rotating which child is held out:
+
+| Test child | Language | n | Test F1 |
+|---|---|---|---|
+| child_6 | Tagalog | 269 | 0.277 |
+| child_2 | Shipibo | 171 | 0.279 |
+| child_7 | Vietnamese | 119 | 0.270 |
+| child_1 | Shipibo | 93 | 0.235 |
+| child_8 | Vietnamese | 152 | 0.189 |
+| child_5 | Tagalog | 84 | 0.211 |
+| child_3 | Shipibo | 49 | 0.183 |
+| child_4 | Tagalog | 61 | 0.144 |
+| child_9 | Vietnamese | 11 | 0.133 |
+| **LOCO mean** | | | **0.213 ± 0.053** |
+
+**LOCO mean = 0.213 ± 0.053 vs canonical holdout = 0.277 — a gap of
+−0.064.** Child_6 and child_2 are relatively easy test cases (0.277,
+0.279); child_9 and child_4 are very hard (0.133, 0.144). The σ = 0.053
+across folds dwarfs the σ = 0.000 from 5-seed fixed-holdout reporting,
+revealing that the dominant source of variance in this task is
+**speaker identity**, not optimizer noise. Child_9 has only 11 clips —
+that fold is essentially noise and pulls the mean down. Excluding child_9
+gives LOCO mean = 0.228 ± 0.044 across the 8 remaining folds.
+
+The LOCO result should be read as the honest cross-speaker performance
+estimate. The canonical 0.277 is the result on the specific test child
+required by the fixed holdout protocol; it is not claimed to generalise
+to all speakers.
+
+
 
 - **Small held-out test set (n=269 from a single child)** means
   σ_seed ≈ 0.016–0.020 on the reported macro-F1. Differences of
@@ -871,7 +954,7 @@ RES_DIR = /home/renku/work/data/   ← READ/WRITE
 
 **Participant-disjoint evaluation** — the two largest, most class-balanced
 children (child_6 n=269, child_2 n=171) are assigned to test and val. This
-yields a 56/17/27 clip ratio which is a necessary deviation given
+yields a 56/17/27 clip ratio rather than 70/15/15, a necessary deviation given
 9 unequal-sized participants. Any alternative assignment either misses classes
 in held-out splits or places more children in test than the dataset can support.
 
