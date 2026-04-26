@@ -925,7 +925,6 @@ aml2026-group-05/
 │   ├── models.py          ← AudioTransformer + AttentivePoolingTransformer
 │   └── train_utils.py     ← training loop, evaluation, sanity checks
 └── scripts/
-    ├── generate_spectrograms.py
     ├── train_transformer_audio.py  ← Model 2 + grid search
     ├── train_transformer_attn.py   ← Model 3 + grid search
     ├── train_multiseed.py          ← multi-seed wrapper
