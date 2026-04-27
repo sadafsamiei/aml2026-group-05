@@ -558,14 +558,35 @@ def _load_clips_cached(path_str: str, mtime: float) -> pd.DataFrame:
     return clips
 
 
-def load_clips() -> pd.DataFrame:
+def load_clips() -> tuple[pd.DataFrame, list[Path]]:
     """Find the latest error_analysis JSON and load it.
-    Disk lookup runs every rerun (cheap); JSON parsing is cached on mtime."""
-    matches = sorted(RESULTS_DIR.glob("error_analysis_*.json"))
-    if not matches:
-        return pd.DataFrame()
-    latest = matches[-1]
-    return _load_clips_cached(str(latest), latest.stat().st_mtime)
+
+    Searches several plausible directories so the dashboard works even if
+    config.RES_DIR resolves to something unexpected on a particular machine.
+    Returns (clips_df, list_of_paths_searched) so the UI can show debug info
+    when nothing is found.
+    """
+    search_dirs = [
+        RESULTS_DIR,                                  # config-derived
+        Path("/home/renku/work/data/results"),        # absolute fallback 1
+        cfg.RES_DIR / "results",                       # belt-and-braces
+        HERE.parent / "data" / "results",              # repo-relative fallback
+    ]
+    # Deduplicate while preserving order
+    seen = set()
+    search_dirs = [d for d in search_dirs
+                    if not (str(d) in seen or seen.add(str(d)))]
+
+    for d in search_dirs:
+        if not d.exists():
+            continue
+        matches = sorted(d.glob("error_analysis_*.json"))
+        if matches:
+            latest = matches[-1]
+            return (_load_clips_cached(str(latest),
+                                        latest.stat().st_mtime),
+                    search_dirs)
+    return (pd.DataFrame(), search_dirs)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -605,10 +626,11 @@ def _plot_cm(cm: np.ndarray, title: str):
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "🎯  Headline Result",
     "📊  Per-class Explorer",
     "🎧  Clip Explorer",
+    "🌟  Presentation Picks",
 ])
 
 # ===========================================================================
@@ -892,25 +914,39 @@ with tab3:
         "Use this during Q&A when someone asks 'show me an example'."
     )
 
-    clips = load_clips()
+    clips, searched_dirs = load_clips()
     if len(clips) == 0:
+        searched_html = "".join(
+            f'<div style="margin:4px 0;"><code style="background:{SURFACE_2}; '
+            f'padding:2px 6px; border-radius:4px; color:{TEXT_MUTED}; '
+            f'font-family:JetBrains Mono,monospace; font-size:11px;">'
+            f'{d}</code> <span style="color:{TEXT_DIM}; font-size:11px;">'
+            f'({"exists" if d.exists() else "missing"})</span></div>'
+            for d in searched_dirs
+        )
         st.markdown(
             f'<div style="background:{SURFACE}; border:1px solid {BORDER}; '
-            f'border-radius:14px; padding:48px 32px; text-align:center; '
-            f'margin-top:16px;">'
-            f'<div style="font-size:42px; margin-bottom:12px; opacity:0.6;">📭</div>'
+            f'border-radius:14px; padding:32px; margin-top:16px;">'
+            f'<div style="font-size:36px; margin-bottom:12px; opacity:0.6; '
+            f'text-align:center;">📭</div>'
             f'<div style="font-size:16px; font-weight:600; color:{TEXT}; '
-            f'margin-bottom:6px;">No clip data loaded</div>'
-            f'<div style="font-size:13px; color:{TEXT_MUTED}; line-height:1.6;">'
-            f'Expected <code style="background:{SURFACE_2}; padding:2px 6px; '
-            f'border-radius:4px; color:{ACCENT}; font-family:JetBrains Mono,monospace;">'
-            f'error_analysis_*.json</code> in<br>'
-            f'<code style="background:{SURFACE_2}; padding:2px 6px; border-radius:4px; '
-            f'color:{TEXT_MUTED}; font-family:JetBrains Mono,monospace; font-size:12px;">'
-            f'{RESULTS_DIR}</code><br><br>'
-            f'Run <code style="background:{SURFACE_2}; padding:2px 6px; border-radius:4px; '
-            f'color:{ACCENT}; font-family:JetBrains Mono,monospace;">'
-            f'python experiments/error_analysis.py</code> first.</div>'
+            f'margin-bottom:12px; text-align:center;">No clip data loaded</div>'
+            f'<div style="font-size:13px; color:{TEXT_MUTED}; line-height:1.6; '
+            f'text-align:center; margin-bottom:16px;">'
+            f'Searched these directories for <code style="background:{SURFACE_2}; '
+            f'padding:2px 6px; border-radius:4px; color:{ACCENT}; '
+            f'font-family:JetBrains Mono,monospace;">error_analysis_*.json</code>:'
+            f'</div>'
+            f'<div style="background:{SURFACE_2}; padding:14px 18px; '
+            f'border-radius:8px; border:1px solid {BORDER};">'
+            f'{searched_html}</div>'
+            f'<div style="font-size:13px; color:{TEXT_MUTED}; line-height:1.6; '
+            f'text-align:center; margin-top:18px;">'
+            f'Run <code style="background:{SURFACE_2}; padding:2px 6px; '
+            f'border-radius:4px; color:{ACCENT}; '
+            f'font-family:JetBrains Mono,monospace;">'
+            f'python experiments/error_analysis.py</code> first, '
+            f'then click ↻ Reload above.</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -1025,6 +1061,267 @@ with tab3:
         st.image(str(spec_path), use_container_width=True)
     else:
         st.caption(f"Spectrogram not found: {spec_path}")
+
+# ===========================================================================
+# TAB 4 — Presentation Picks
+# ===========================================================================
+
+with tab4:
+    st.markdown("### Curated clips for the presentation")
+    st.markdown(
+        "Four hand-picked clips that tell the story of the project. "
+        "Each one is a different category from the error analysis. "
+        "Play them in sequence — the contrast between them is the project in 2 minutes."
+    )
+
+    # Each entry: (audio_id, true_label, m1, m2, m3, headline, story, takeaway)
+    PRESENTATION_CLIPS = [
+        {
+            "id":       "audio_0445",
+            "category": "all_agree_wrong",
+            "title":    "All three models agree on the wrong class",
+            "true":     "PLTOY",
+            "m1":       "INTER", "m2": "INTER", "m3": "INTER",
+            "tag":      "Data ceiling",
+            "tag_col":  "#EF4444",
+            "story": (
+                "This clip is annotated as **PLTOY** (playing with toys). "
+                "Every one of our three models — a 1,028-parameter linear "
+                "classifier, a 126K mean-pool transformer, and a 648K "
+                "attention transformer — predicted **INTER** (social interaction). "
+                "When all three architectures agree on the wrong class, the "
+                "limit is in the data, not the model."
+            ),
+            "interpretation": (
+                "**40.9% of test clips fall in this category.** The Tagalog "
+                "training prior (46.9% INTER) pulls every model toward INTER "
+                "regardless of what the audio actually contains. No amount of "
+                "extra capacity recovers these clips."
+            ),
+        },
+        {
+            "id":       "audio_0298",
+            "category": "all_agree_wrong",
+            "title":    "MOVE clip — every model says INTER",
+            "true":     "MOVE",
+            "m1":       "INTER", "m2": "INTER", "m3": "INTER",
+            "tag":      "Tagalog INTER prior",
+            "tag_col":  "#EF4444",
+            "story": (
+                "This clip is annotated as **MOVE** (movement activity). "
+                "All three models predict **INTER** — the same systematic "
+                "confusion we just saw with PLTOY."
+            ),
+            "interpretation": (
+                "Confusion pairs in the *all-3-agree-wrong* set: "
+                "**PLTOY → INTER (n=13), MOVE → INTER (n=6), EXTEV → INTER (n=5)**. "
+                "The confusion direction is always *toward* INTER. This is the "
+                "Tagalog training prior in its purest form — when models agree, "
+                "they agree on INTER."
+            ),
+        },
+        {
+            "id":       "audio_0257",
+            "category": "all_agree_correct",
+            "title":    "All three models agree — correctly",
+            "true":     "INTER",
+            "m1":       "INTER", "m2": "INTER", "m3": "INTER",
+            "tag":      "Success",
+            "tag_col":  COLOR_M3,
+            "story": (
+                "This clip is annotated as **INTER**, and every model gets it "
+                "right. Compare it acoustically to the previous two clips — "
+                "the same predicted class, but here it actually *is* INTER."
+            ),
+            "interpretation": (
+                "Only **7.1% of test clips** are correctly classified by all "
+                "three models. Most of these are INTER clips (15 of 19) — "
+                "consistent with INTER being the highest-F1 class on every "
+                "model. The task is not impossible; it just has a high "
+                "data-ceiling on the rest of the test set."
+            ),
+        },
+        {
+            "id":       "audio_0828",
+            "category": "all_agree_wrong",
+            "title":    "Even the dominant class can fool every model",
+            "true":     "INTER",
+            "m1":       "EXTEV", "m2": "EXTEV", "m3": "EXTEV",
+            "tag":      "Reverse error",
+            "tag_col":  ACCENT,
+            "story": (
+                "This clip is annotated as **INTER** — the class every model "
+                "over-predicts. But here, all three predict **EXTEV**. The "
+                "Tagalog prior is overridden by something specific in this "
+                "clip's acoustics."
+            ),
+            "interpretation": (
+                "This is the **only INTER clip** where all three models agree "
+                "on a wrong class. It shows that the INTER bias is not absolute "
+                "— there are clip-level features strong enough to override the "
+                "training prior. Just not strong enough on the other 268 clips."
+            ),
+        },
+    ]
+
+    # ── Headline cards ────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### The story in one row")
+    headline_cols = st.columns(4)
+    headline_data = [
+        ("40.9%", "Wrong by ALL 3 models",   "Data-ceiling clips"),
+        ("7.1%",  "Correct by ALL 3 models", "Genuinely classifiable"),
+        ("11.2%", "All 3 agree, all wrong",  "Same prediction, wrong class"),
+        ("29.7%", "All 3 wrong, disagree",   "No model has any signal"),
+    ]
+    for col, (num, label, sub) in zip(headline_cols, headline_data):
+        with col:
+            st.markdown(
+                f'<div class="metric-card">'
+                f'<div class="metric-num">{num}</div>'
+                f'<div class="metric-lbl">{label}</div>'
+                f'<div class="metric-sub" style="color:{TEXT_DIM};">{sub}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("---")
+
+    # ── Clip cards ────────────────────────────────────────────────────
+    for i, clip in enumerate(PRESENTATION_CLIPS, start=1):
+        # Header row
+        st.markdown(
+            f'<div style="display:flex; align-items:center; gap:12px; '
+            f'margin: 28px 0 12px 0;">'
+            f'<div style="background:{SURFACE_2}; color:{ACCENT}; '
+            f'padding:4px 12px; border-radius:6px; font-size:11px; '
+            f'font-weight:600; letter-spacing:0.06em; text-transform:uppercase; '
+            f'border:1px solid {BORDER_HI}; '
+            f'font-family:JetBrains Mono,monospace;">CLIP {i}</div>'
+            f'<div style="background:{clip["tag_col"]}; color:#0A0E1A; '
+            f'padding:4px 12px; border-radius:6px; font-size:11px; '
+            f'font-weight:700; letter-spacing:0.04em;">'
+            f'{clip["tag"].upper()}</div>'
+            f'<div style="font-size:18px; font-weight:600; color:{TEXT};">'
+            f'{clip["title"]}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Two-column layout: audio left, predictions right
+        left, right = st.columns([3, 2])
+
+        with left:
+            # Audio
+            wav_path = WAV_DIR / f"{clip['id']}.wav"
+            if wav_path.exists():
+                with open(wav_path, "rb") as f:
+                    st.audio(f.read(), format="audio/wav")
+            else:
+                st.warning(f"Audio not found: {wav_path}")
+
+            # Mel spectrogram
+            spec_path = SPEC_DIR / f"{clip['id']}.png"
+            if spec_path.exists():
+                st.image(str(spec_path), use_container_width=True,
+                         caption=f"Mel spectrogram — {clip['id']}")
+
+        with right:
+            # True/predicted predictions card
+            def pred_row(label, value, true_val):
+                ok = (value == true_val)
+                color = COLOR_M3 if ok else "#EF4444"
+                mark = "✓" if ok else "✗"
+                return (
+                    f'<div style="display:flex; justify-content:space-between; '
+                    f'align-items:center; padding:8px 0; '
+                    f'border-bottom:1px solid {BORDER};">'
+                    f'<div style="color:{TEXT_MUTED}; font-size:12px; '
+                    f'font-weight:500;">{label}</div>'
+                    f'<div style="display:flex; align-items:center; gap:8px;">'
+                    f'<span style="color:{TEXT}; font-weight:600; '
+                    f'font-family:JetBrains Mono,monospace; font-size:13px;">'
+                    f'{value}</span>'
+                    f'<span style="color:{color}; font-weight:700; '
+                    f'font-size:14px;">{mark}</span>'
+                    f'</div></div>'
+                )
+
+            true_html = (
+                f'<div style="display:flex; justify-content:space-between; '
+                f'align-items:center; padding:8px 0; '
+                f'border-bottom:1px solid {BORDER_HI};">'
+                f'<div style="color:{ACCENT}; font-size:11px; font-weight:600; '
+                f'text-transform:uppercase; letter-spacing:0.08em;">'
+                f'True class</div>'
+                f'<div style="color:{TEXT}; font-weight:700; '
+                f'font-family:JetBrains Mono,monospace; font-size:14px;">'
+                f'{clip["true"]}</div></div>'
+            )
+            st.markdown(
+                f'<div style="background:{SURFACE}; border:1px solid {BORDER}; '
+                f'border-radius:12px; padding:14px 18px;">'
+                f'{true_html}'
+                f'{pred_row("Model 1 — LR",          clip["m1"], clip["true"])}'
+                f'{pred_row("Model 2 — mean pool",   clip["m2"], clip["true"])}'
+                f'{pred_row("Model 3 — attention",   clip["m3"], clip["true"])}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
+                f'<div style="font-size:11px; color:{TEXT_DIM}; '
+                f'margin-top:10px; font-family:JetBrains Mono,monospace;">'
+                f'audio_id: <span style="color:{TEXT_MUTED};">{clip["id"]}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        # Story + interpretation (full width below)
+        st.markdown(
+            f'<div style="background:{SURFACE}; border:1px solid {BORDER}; '
+            f'border-radius:12px; padding:18px 22px; margin-top:14px; '
+            f'border-left:3px solid {clip["tag_col"]};">'
+            f'<div style="font-size:11px; color:{TEXT_MUTED}; '
+            f'text-transform:uppercase; letter-spacing:0.08em; '
+            f'font-weight:600; margin-bottom:8px;">What we hear</div>'
+            f'<div style="color:{TEXT}; line-height:1.65; font-size:14px; '
+            f'margin-bottom:16px;">{clip["story"]}</div>'
+            f'<div style="font-size:11px; color:{TEXT_MUTED}; '
+            f'text-transform:uppercase; letter-spacing:0.08em; '
+            f'font-weight:600; margin-bottom:8px;">What it tells us</div>'
+            f'<div style="color:{TEXT_MUTED}; line-height:1.65; font-size:13px;">'
+            f'{clip["interpretation"]}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Closing summary ───────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### What these four clips together say")
+    st.markdown(
+        f'<div style="background:linear-gradient(135deg, {SURFACE} 0%, '
+        f'{SURFACE_2} 100%); border:1px solid {BORDER_HI}; '
+        f'border-radius:14px; padding:24px 28px; margin-top:8px;">'
+        f'<div style="color:{TEXT}; line-height:1.75; font-size:15px;">'
+        f'These four clips compress the entire project into a single listening '
+        f'experience. Two clips show <strong style="color:{ACCENT};">the data '
+        f'ceiling</strong> — every architecture, from a 1,028-parameter linear '
+        f'model to a 648K-parameter attention transformer, makes the same '
+        f'mistake on the same clips. One clip shows a <strong style="color:'
+        f'{COLOR_M3};">success case</strong> — proving the task is not '
+        f'impossible. The fourth shows the <strong style="color:'
+        f'{ACCENT_2};">reverse error direction</strong> — even the '
+        f'over-predicted class has clips that fool every model.'
+        f'</div>'
+        f'<div style="color:{TEXT_MUTED}; line-height:1.65; font-size:13px; '
+        f'margin-top:14px;">'
+        f'The key finding is not which model wins. It is that the same 110 '
+        f'clips defeat every architecture we tried. Adding parameters does '
+        f'not break the ceiling. More <em>training children</em> would.'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
 
 # ---------------------------------------------------------------------------
 # Footer
