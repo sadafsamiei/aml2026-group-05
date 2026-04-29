@@ -42,6 +42,7 @@ HERE = Path(__file__).resolve().parent           # dashboard/
 sys.path.insert(0, str(HERE.parent / "src"))     # src/
 
 import config as cfg
+from methodology_tab import render_methodology_tab
 
 CLASS_NAMES = cfg.CLASS_NAMES
 RESULTS_DIR = cfg.RES_DIR / "results"
@@ -626,7 +627,8 @@ def _plot_cm(cm: np.ndarray, title: str):
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "🔬  Methodology",
     "🎯  Headline Result",
     "📊  Per-class Explorer",
     "🎧  Clip Explorer",
@@ -634,10 +636,34 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 # ===========================================================================
-# TAB 1 — Headline Result
+# TAB 1 — Methodology
 # ===========================================================================
 
 with tab1:
+    render_methodology_tab(
+        results_dir=RESULTS_DIR,
+        BG=BG,
+        SURFACE=SURFACE,
+        SURFACE_2=SURFACE_2,
+        BORDER=BORDER,
+        BORDER_HI=BORDER_HI,
+        TEXT=TEXT,
+        TEXT_MUTED=TEXT_MUTED,
+        TEXT_DIM=TEXT_DIM,
+        ACCENT=ACCENT,
+        ACCENT_2=ACCENT_2,
+        GRID=GRID,
+        COLOR_M1=COLOR_M1,
+        COLOR_M2=COLOR_M2,
+        COLOR_M3=COLOR_M3,
+        DARK_HEATMAP=DARK_HEATMAP,
+    )
+
+# ===========================================================================
+# TAB 2 — Headline Result
+# ===========================================================================
+
+with tab2:
     st.markdown("### Model complexity vs test F1")
     st.markdown(
         "Every dot is one (model, feature) pair from our 5-seed runs. "
@@ -774,10 +800,10 @@ with tab1:
         )
 
 # ===========================================================================
-# TAB 2 — Per-class Explorer
+# TAB 3 — Per-class Explorer
 # ===========================================================================
 
-with tab2:
+with tab3:
     st.markdown("### Per-class breakdown across models and features")
     st.markdown(
         "Pick a feature source and a model. The dashboard shows the per-class "
@@ -895,10 +921,12 @@ with tab2:
 
 
 # ===========================================================================
-# TAB 3 — Clip Explorer
+# TAB 4 — Clip Explorer
 # ===========================================================================
 
-with tab3:
+def _render_clip_explorer():
+    """Tab 3 body. Uses early `return` instead of `st.stop()` so that tabs 4
+    and 5 still render. (st.stop() halts the entire Streamlit script.)"""
     head_l, head_r = st.columns([6, 1])
     with head_l:
         st.markdown("### Explore individual test clips")
@@ -950,7 +978,7 @@ with tab3:
             f'</div>',
             unsafe_allow_html=True,
         )
-        st.stop()
+        return
 
     cat_labels = {
         "all_agree_correct":              "✅ All 3 correct (success cases)",
@@ -997,7 +1025,7 @@ with tab3:
 
     if len(filtered) == 0:
         st.warning("No clips match these filters.")
-        st.stop()
+        return
 
     show_cols = ["audio_id", "true_label", "m1_pred", "m2_pred", "m3_pred",
                  "majority_pred", "child", "lang"]
@@ -1020,7 +1048,7 @@ with tab3:
     selected_rows = selection.selection.rows
     if not selected_rows:
         st.info("👆 Click a row in the table to play the audio and view the spectrogram.")
-        st.stop()
+        return
 
     row_idx = selected_rows[0]
     clip = filtered.iloc[row_idx]
@@ -1062,11 +1090,15 @@ with tab3:
     else:
         st.caption(f"Spectrogram not found: {spec_path}")
 
-# ===========================================================================
-# TAB 4 — Presentation Picks
-# ===========================================================================
 
 with tab4:
+    _render_clip_explorer()
+
+# ===========================================================================
+# TAB 5 — Presentation Picks
+# ===========================================================================
+
+with tab5:
     st.markdown("### Curated clips for the presentation")
     st.markdown(
         "Four hand-picked clips that tell the story of the project. "
