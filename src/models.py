@@ -10,6 +10,34 @@ Both share the identical Transformer encoder backbone. The only difference
 is in how the frame-level encoder outputs are pooled into a single vector
 before the classification head.
 
+Extension (v2): separate dropout rates at four independent locations
+--------------------------------------------------------------------
+Previously a single `dropout` rate was shared between the encoder layers
+and the head. Following reviewer feedback, v2 introduces per-location rates:
+
+  dropout_encoder   — inside TransformerEncoderLayer (attention + FFN)
+                      same semantic as the original `dropout` parameter
+  dropout_input     — applied after input_proj + pos_enc, before encoder
+                      regularises the token embeddings as they enter the
+                      encoder stack
+  dropout_head      — applied after pooling, before the classifier head
+                      directly regularises the pooled representation
+  dropout_meta      — (Model 3 only) applied to the metadata query after
+                      meta_proj; forces the model not to over-rely on any
+                      single metadata dimension
+
+Backward compatibility
+----------------------
+All new parameters default to their v1 equivalents so existing configs
+and saved checkpoints are not broken:
+  dropout_encoder = dropout   (same as before)
+  dropout_input   = 0.0       (new; default = no extra regularisation)
+  dropout_head    = dropout   (same as before)
+  dropout_meta    = 0.0       (new; default = no extra regularisation)
+
+The original `dropout` kwarg is preserved as the fallback for
+dropout_encoder and dropout_head when the new params are not supplied.
+
 Pooling comparison
 ------------------
 Mean pooling  : pool = mean(enc_outputs, over real frames)
@@ -23,16 +51,9 @@ Query source (controlled by use_external_meta)
 ----------------------------------------------
   use_external_meta = False  (current default)
       A single learnable parameter vector acts as the query.
-      This isolates the architecture contribution of attentive pooling
-      from any metadata effect. Use this when metadata = participant
-      identity (current state: 1 participant with PNGs, age = identity).
 
   use_external_meta = True
       Metadata (age + gender) is projected to the query vector.
-      Use this once the full dataset has >= 4 participants and age/gender
-      do not uniquely identify individuals.
-      Switch: set USE_EXTERNAL_META = True in config.py and pass
-      meta tensors through the dataset and training loop.
 """
 
 import torch
@@ -52,10 +73,10 @@ def _build_encoder(d_model: int, nhead: int, num_layers: int,
         d_model         = d_model,
         nhead           = nhead,
         dim_feedforward = d_model * 4,
-        dropout         = dropout,
+        dropout         = dropout,       # dropout_encoder goes here
         activation      = "relu",
         batch_first     = True,
-        norm_first      = True,   # pre-LN: more stable at small N
+        norm_first      = True,          # pre-LN: more stable at small N
     )
     return nn.TransformerEncoder(
         layer, num_layers=num_layers, enable_nested_tensor=False
@@ -81,22 +102,48 @@ class AudioTransformer(nn.Module):
     Transformer encoder with masked mean pooling.
     Implements Model 2 (neural baseline) from PROBLEMSETTING.md.
 
-    Architecture
-    ------------
-    (B, T, F) → input_proj → pos_enc → TransformerEncoder
-              → masked mean pool → dropout → Linear → (B, num_classes)
+    Architecture (v2 — separate dropout rates)
+    -------------------------------------------
+    (B, T, F) → input_proj → pos_enc
+              → dropout_input                   ← NEW in v2
+              → TransformerEncoder (dropout_encoder inside each layer)
+              → masked mean pool
+              → dropout_head                    ← was `dropout` in v1
+              → Linear → (B, num_classes)
+
+    Parameters
+    ----------
+    dropout         : float — legacy fallback for dropout_encoder + dropout_head
+    dropout_encoder : float — inside TransformerEncoderLayer (default=dropout)
+    dropout_input   : float — after input proj, before encoder    (default=0.0)
+    dropout_head    : float — after pooling, before classifier    (default=dropout)
     """
 
     def __init__(self, input_dim: int, d_model: int = 64, nhead: int = 4,
                  num_layers: int = 2, dropout: float = 0.3,
-                 num_classes: int = 4, max_len: int = 512):
+                 num_classes: int = 4, max_len: int = 512,
+                 # ── v2 separate dropout rates ──
+                 dropout_encoder: float = None,
+                 dropout_input:   float = 0.0,
+                 dropout_head:    float = None):
         super().__init__()
-        self.input_proj = nn.Linear(input_dim, d_model)
-        self.pos_enc    = nn.Embedding(max_len, d_model)
-        self.encoder    = _build_encoder(d_model, nhead, num_layers, dropout)
-        self.dropout    = nn.Dropout(dropout)
-        self.classifier = nn.Linear(d_model, num_classes)
+
+        # Resolve defaults — fall back to `dropout` for backward compat
+        d_enc  = dropout if dropout_encoder is None else dropout_encoder
+        d_head = dropout if dropout_head    is None else dropout_head
+
+        self.input_proj    = nn.Linear(input_dim, d_model)
+        self.pos_enc       = nn.Embedding(max_len, d_model)
+        self.dropout_input = nn.Dropout(dropout_input)   # NEW v2
+        self.encoder       = _build_encoder(d_model, nhead, num_layers, d_enc)
+        self.dropout_head  = nn.Dropout(d_head)          # was self.dropout
+        self.classifier    = nn.Linear(d_model, num_classes)
         self.apply(_init_weights)
+
+        # Store for introspection / printing
+        self._d_enc   = d_enc
+        self._d_input = dropout_input
+        self._d_head  = d_head
 
     def forward(self, x: torch.Tensor,
                 padding_mask: torch.Tensor = None) -> torch.Tensor:
@@ -107,8 +154,10 @@ class AudioTransformer(nn.Module):
         """
         B, T, _ = x.shape
         pos = torch.arange(T, device=x.device).unsqueeze(0).expand(B, -1)
-        x   = self.input_proj(x) + self.pos_enc(pos)
-        x   = self.encoder(x, src_key_padding_mask=padding_mask)
+
+        x = self.input_proj(x) + self.pos_enc(pos)    # (B, T, d)
+        x = self.dropout_input(x)                      # dropout_input — v2
+        x = self.encoder(x, src_key_padding_mask=padding_mask)
 
         if padding_mask is not None:
             mask_f = (~padding_mask).float().unsqueeze(-1)   # (B, T, 1)
@@ -116,26 +165,28 @@ class AudioTransformer(nn.Module):
         else:
             pooled = x.mean(1)
 
-        return self.classifier(self.dropout(pooled))
+        return self.classifier(self.dropout_head(pooled))    # dropout_head — v2
 
     def count_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
     def print_architecture(self):
         layer = self.encoder.layers[0]
-        print("=" * 52)
-        print("AudioTransformer  (mean pooling)")
-        print("=" * 52)
-        print(f"  input_proj  : {self.input_proj.in_features} → {self.input_proj.out_features}")
-        print(f"  d_model     : {layer.self_attn.embed_dim}")
-        print(f"  nhead       : {layer.self_attn.num_heads}")
-        print(f"  num_layers  : {len(self.encoder.layers)}")
-        print(f"  ffn_dim     : {layer.linear1.out_features}")
-        print(f"  dropout     : {layer.dropout.p}")
-        print(f"  num_classes : {self.classifier.out_features}")
-        print(f"  pooling     : mean (masked)")
-        print(f"  Parameters  : {self.count_parameters():,}")
-        print("=" * 52)
+        print("=" * 56)
+        print("AudioTransformer  (mean pooling)  [v2 — multi-dropout]")
+        print("=" * 56)
+        print(f"  input_proj      : {self.input_proj.in_features} → {self.input_proj.out_features}")
+        print(f"  d_model         : {layer.self_attn.embed_dim}")
+        print(f"  nhead           : {layer.self_attn.num_heads}")
+        print(f"  num_layers      : {len(self.encoder.layers)}")
+        print(f"  ffn_dim         : {layer.linear1.out_features}")
+        print(f"  dropout_input   : {self._d_input}")
+        print(f"  dropout_encoder : {self._d_enc}")
+        print(f"  dropout_head    : {self._d_head}")
+        print(f"  num_classes     : {self.classifier.out_features}")
+        print(f"  pooling         : mean (masked)")
+        print(f"  Parameters      : {self.count_parameters():,}")
+        print("=" * 56)
 
 
 # ---------------------------------------------------------------------------
@@ -147,116 +198,78 @@ class AttentivePoolingTransformer(nn.Module):
     Transformer encoder with query-based attentive pooling.
     Implements Model 3 (main model) from PROBLEMSETTING.md.
 
-    Architecture
-    ------------
-    (B, T, F) → input_proj → pos_enc → TransformerEncoder → enc  (B, T, d)
-    query     → (from meta_proj(meta) or learned_query)           (B, 1, d)
-    scores    = dot(enc, query) · exp(log_tau)                    (B, T, 1)
-    weights   = softmax(scores, masked)                            (B, T, 1)
-    pooled    = sum(enc * weights, dim=T)                          (B, d)
-    logits    = Linear(dropout(pooled))                            (B, num_classes)
-
-    Attention mechanism notes
-    -------------------------
-    An earlier version of this model used scaled dot-product scoring
-    (score / sqrt(d)) and a Tanh activation on the metadata projection.
-    Empirically this collapsed the attention distribution to near-uniform
-    at init and throughout training (measured mean_weight_std ≈ 0.00086
-    against a uniform proxy of 0.00659). Two changes restore usable
-    dynamic range while keeping the mechanism — metadata-query attentive
-    pooling via dot product — unchanged:
-
-      1. The /sqrt(d) factor is removed. That scaling is a multi-head
-         self-attention convention (many queries × many keys produce
-         O(sqrt(d)) raw scores); here we have one query over T keys, so
-         dividing by 8 (for d=64) simply flattens the softmax.
-      2. The Tanh activation on meta_proj is removed. Xavier-initialised
-         Linear gives ~zero pre-activation, and Tanh(~0)≈0 drove the
-         query to near-zero at init — a flat plateau the model could not
-         climb out of. LayerNorm alone already stabilises query magnitude.
-
-    A single learned scalar log_tau is added as a temperature on the
-    scores before softmax (τ = exp(log_tau), init 0 → τ=1). This lets the
-    model sharpen or flatten the distribution end-to-end.
-
-    Query source
-    ------------
-    use_external_meta = False
-        self.learned_query : nn.Parameter of shape (1, 1, d_model),
-        init std = 1/sqrt(d_model). Trained end-to-end. Isolates pooling
-        architecture effect from metadata.
-
-    use_external_meta = True   (current default — 9 participants)
-        self.meta_proj : Linear(meta_dim → d_model) + LayerNorm.
-        meta vector (age_normalised, gender_binary) → query. Use when
-        age and gender are not collinear with participant identity
-        (verify with check_metadata_viability).
+    Architecture (v2 — separate dropout rates)
+    -------------------------------------------
+    (B, T, F) → input_proj → pos_enc
+              → dropout_input                   ← NEW in v2
+              → TransformerEncoder (dropout_encoder inside each layer)
+              → enc   (B, T, d)
+    query     → meta_proj(meta) or learned_query
+              → dropout_meta                    ← NEW in v2 (Model 3 only)
+    scores    = dot(enc, query) · exp(log_tau)
+    weights   = softmax(scores, masked)
+    pooled    = sum(enc * weights)
+              → dropout_head                    ← was `dropout` in v1
+              → Linear → (B, num_classes)
 
     Parameters
     ----------
-    input_dim        : F_DIM (frequency bins from spectrogram audit)
-    d_model          : Transformer hidden dimension
-    nhead            : attention heads (d_model must be divisible by nhead)
-    num_layers       : encoder depth
-    dropout          : applied inside encoder and before head
-    num_classes      : output classes (4 for full dataset, 2 currently)
-    max_len          : positional embedding table size (> MAX_LEN is safe)
-    use_external_meta: False = learned query; True = metadata-driven query
-    meta_dim         : metadata vector size (2 = [age, gender]; ignored if
-                       use_external_meta=False)
+    dropout         : float — legacy fallback for dropout_encoder + dropout_head
+    dropout_encoder : float — inside TransformerEncoderLayer  (default=dropout)
+    dropout_input   : float — after input proj, before encoder (default=0.0)
+    dropout_head    : float — after pooling, before classifier (default=dropout)
+    dropout_meta    : float — after meta_proj, on the query    (default=0.0)
     """
 
     def __init__(self, input_dim: int, d_model: int = 64, nhead: int = 4,
                  num_layers: int = 2, dropout: float = 0.3,
                  num_classes: int = 4, max_len: int = 512,
-                 use_external_meta: bool = False, meta_dim: int = 2):
+                 use_external_meta: bool = False, meta_dim: int = 2,
+                 # ── v2 separate dropout rates ──
+                 dropout_encoder: float = None,
+                 dropout_input:   float = 0.0,
+                 dropout_head:    float = None,
+                 dropout_meta:    float = 0.0):
         super().__init__()
+
+        # Resolve defaults — fall back to `dropout` for backward compat
+        d_enc  = dropout if dropout_encoder is None else dropout_encoder
+        d_head = dropout if dropout_head    is None else dropout_head
 
         self.use_external_meta = use_external_meta
 
-        # Shared backbone (identical to AudioTransformer)
-        self.input_proj = nn.Linear(input_dim, d_model)
-        self.pos_enc    = nn.Embedding(max_len, d_model)
-        self.encoder    = _build_encoder(d_model, nhead, num_layers, dropout)
+        # Shared backbone
+        self.input_proj    = nn.Linear(input_dim, d_model)
+        self.pos_enc       = nn.Embedding(max_len, d_model)
+        self.dropout_input = nn.Dropout(dropout_input)   # NEW v2
+        self.encoder       = _build_encoder(d_model, nhead, num_layers, d_enc)
 
         # ── Query source ─────────────────────────────────────────────────
         if use_external_meta:
-            # Metadata → query vector.
-            # LayerNorm stabilises the projection magnitude.
-            # NOTE: Tanh removed (previous version). With Xavier-initialised
-            # Linear, the pre-activation is ~0 at init; Tanh(0)≈0 drove the
-            # query to near-zero, making dot-product scores ~0 and softmax
-            # near-uniform throughout training. LayerNorm alone gives unit
-            # per-feature scale without that plateau.
             self.meta_proj = nn.Sequential(
                 nn.Linear(meta_dim, d_model),
                 nn.LayerNorm(d_model),
             )
+            self.dropout_meta = nn.Dropout(dropout_meta)  # NEW v2
         else:
-            # Single learned query parameter — one vector shared across
-            # all examples in a batch, broadcast to (B, 1, d_model).
-            # Init std = 1/sqrt(d_model) so dot-product scores start at
-            # O(1) rather than O(0.02*sqrt(d))≈O(0.16), avoiding the
-            # flat-softmax plateau at the start of training.
             self.learned_query = nn.Parameter(
                 torch.randn(1, 1, d_model) * (d_model ** -0.5)
             )
 
-        # ── Learned temperature for attention sharpness ──────────────────
-        # τ = exp(log_tau), init 0 → τ=1 (neutral). Scores are multiplied
-        # by τ before softmax, so the model can learn to sharpen (τ>1) or
-        # flatten (τ<1) the attention distribution end-to-end. This is a
-        # single scalar parameter and does not change the mechanism — it
-        # is still metadata-query attentive pooling via dot product.
+        # Learned temperature
         self.log_tau = nn.Parameter(torch.zeros(1))
 
         # ── Classification head ───────────────────────────────────────────
-        self.dropout    = nn.Dropout(dropout)
-        self.classifier = nn.Linear(d_model, num_classes)
+        self.dropout_head  = nn.Dropout(d_head)          # was self.dropout
+        self.classifier    = nn.Linear(d_model, num_classes)
 
-        # Initialise all Linear and Embedding layers
-        # (learned_query is initialised above; meta_proj is covered here)
         self.apply(_init_weights)
+
+        # Store for introspection
+        self._d_enc   = d_enc
+        self._d_input = dropout_input
+        self._d_head  = d_head
+        self._d_meta  = dropout_meta
 
     def forward(self, x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
@@ -266,45 +279,35 @@ class AttentivePoolingTransformer(nn.Module):
         ----------
         x            : (B, T, F_DIM) spectrogram frames
         padding_mask : (B, T) bool — True = padded, ignored in attention
-        meta         : (B, meta_dim) float — required if use_external_meta=True,
-                       ignored otherwise
+        meta         : (B, meta_dim) float — required if use_external_meta=True
 
         Returns
         -------
         logits  : (B, num_classes)
-        weights : (B, T) attention weights (for analysis and visualisation)
+        weights : (B, T) attention weights (for analysis)
         """
         B, T, _ = x.shape
 
         # ── Encoder ───────────────────────────────────────────────────────
         pos = torch.arange(T, device=x.device).unsqueeze(0).expand(B, -1)
         x   = self.input_proj(x) + self.pos_enc(pos)              # (B, T, d)
+        x   = self.dropout_input(x)                                # dropout_input — v2
         enc = self.encoder(x, src_key_padding_mask=padding_mask)  # (B, T, d)
 
         # ── Query ─────────────────────────────────────────────────────────
         if self.use_external_meta:
             assert meta is not None, \
                 "meta tensor required when use_external_meta=True"
-            query = self.meta_proj(meta).unsqueeze(1)              # (B, 1, d)
+            query = self.dropout_meta(                             # dropout_meta — v2
+                self.meta_proj(meta)
+            ).unsqueeze(1)                                         # (B, 1, d)
         else:
             query = self.learned_query.expand(B, -1, -1)           # (B, 1, d)
 
         # ── Attentive pooling ─────────────────────────────────────────────
-        # Dot-product score between query and each frame embedding,
-        # scaled by a learned temperature τ = exp(log_tau).
-        #
-        # NOTE: the previous version divided by sqrt(d). That scaling is a
-        # multi-head self-attention convention, where many queries each
-        # attend over many keys and raw scores grow as O(sqrt(d)). Here we
-        # have a *single* query over T keys, so /sqrt(d) simply flattens
-        # the softmax by a factor of ~8 (for d=64) and the pooling
-        # collapses to near-uniform (measured: mean_weight_std ≈ 0.00086
-        # vs uniform proxy 0.00659). Removing it restores usable dynamic
-        # range; the learned τ lets the model further sharpen if useful.
         tau    = torch.exp(self.log_tau)
-        scores = (enc * query).sum(dim=-1, keepdim=True) * tau   # (B, T, 1)
+        scores = (enc * query).sum(dim=-1, keepdim=True) * tau    # (B, T, 1)
 
-        # Mask padded positions to -inf before softmax
         if padding_mask is not None:
             scores = scores.masked_fill(
                 padding_mask.unsqueeze(-1), float("-inf")
@@ -313,8 +316,8 @@ class AttentivePoolingTransformer(nn.Module):
         weights = torch.softmax(scores, dim=1)      # (B, T, 1)
         pooled  = (enc * weights).sum(dim=1)        # (B, d)
 
-        logits = self.classifier(self.dropout(pooled))  # (B, num_classes)
-        return logits, weights.squeeze(-1)           # weights: (B, T)
+        logits = self.classifier(self.dropout_head(pooled))       # dropout_head — v2
+        return logits, weights.squeeze(-1)
 
     def count_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
@@ -323,16 +326,19 @@ class AttentivePoolingTransformer(nn.Module):
         layer = self.encoder.layers[0]
         mode  = ("external metadata" if self.use_external_meta
                  else "learned query (no external metadata)")
-        print("=" * 52)
-        print("AttentivePoolingTransformer")
-        print("=" * 52)
-        print(f"  input_proj  : {self.input_proj.in_features} → {self.input_proj.out_features}")
-        print(f"  d_model     : {layer.self_attn.embed_dim}")
-        print(f"  nhead       : {layer.self_attn.num_heads}")
-        print(f"  num_layers  : {len(self.encoder.layers)}")
-        print(f"  ffn_dim     : {layer.linear1.out_features}")
-        print(f"  dropout     : {layer.dropout.p}")
-        print(f"  num_classes : {self.classifier.out_features}")
-        print(f"  pooling     : attentive ({mode})")
-        print(f"  Parameters  : {self.count_parameters():,}")
-        print("=" * 52)
+        print("=" * 56)
+        print("AttentivePoolingTransformer  [v2 — multi-dropout]")
+        print("=" * 56)
+        print(f"  input_proj      : {self.input_proj.in_features} → {self.input_proj.out_features}")
+        print(f"  d_model         : {layer.self_attn.embed_dim}")
+        print(f"  nhead           : {layer.self_attn.num_heads}")
+        print(f"  num_layers      : {len(self.encoder.layers)}")
+        print(f"  ffn_dim         : {layer.linear1.out_features}")
+        print(f"  dropout_input   : {self._d_input}")
+        print(f"  dropout_encoder : {self._d_enc}")
+        print(f"  dropout_head    : {self._d_head}")
+        print(f"  dropout_meta    : {self._d_meta}  (external meta only)")
+        print(f"  num_classes     : {self.classifier.out_features}")
+        print(f"  pooling         : attentive ({mode})")
+        print(f"  Parameters      : {self.count_parameters():,}")
+        print("=" * 56)

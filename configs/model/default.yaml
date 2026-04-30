@@ -1,0 +1,13 @@
+# configs/training/default.yaml
+# ──────────────────────────────────────────────────────────────────────────
+# Fixed training hyperparameters shared by all models.
+# Override any value from the command line:
+#   python scripts/train_transformer_audio.py training.lr=5e-4
+# ──────────────────────────────────────────────────────────────────────────
+
+epochs: 100
+patience: 15
+batch_size: 32
+weight_decay: 0.0001
+label_smoothing: 0.0
+seed: 42

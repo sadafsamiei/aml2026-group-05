@@ -84,13 +84,16 @@ HPARAM_SMALL = {
     "batch_size": 8, "epochs": 150, "patience": 20,
     "label_smoothing": 0.0,
 }
-"""
+
 HPARAM_FULL = {
     "d_model": 64, "nhead": 4, "num_layers": 2,
     "dropout": 0.5, "lr": 1e-3, "weight_decay": 1e-4,
     "batch_size": 32, "epochs": 100, "patience": 15,
     "label_smoothing": 0.1,
 }
+
+
+
 """
 HPARAM_FULL = {
     "d_model": 192, "nhead": 4, "num_layers": 1,
@@ -98,6 +101,7 @@ HPARAM_FULL = {
     "batch_size": 16, "epochs": 100, "patience": 15,
     "label_smoothing": 0.0,   # ← match canonical wav2vec2
 }
+"""
 
 HPARAM_DEFAULTS = HPARAM_FULL
 
@@ -108,7 +112,7 @@ USE_MFCC = False
 
 # Pretrained audio embeddings (wav2vec2-base). When True, loads .npy files
 # from PRETRAINED_DIR and overrides F_DIM to 768 (wav2vec2 embedding dim).
-USE_PRETRAINED = True   # ← flip to True when doing wav2vec2 runs
+USE_PRETRAINED = False   # ← flip to True when doing wav2vec2 runs
 
 assert not (USE_MFCC and USE_PRETRAINED), \
     "Cannot use both USE_MFCC and USE_PRETRAINED — pick one."

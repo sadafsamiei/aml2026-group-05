@@ -1,0 +1,27 @@
+# configs/model/audio_mel.yaml
+# ──────────────────────────────────────────────────────────────────────────
+# Model 2 (AudioTransformer, mean pooling) — Mel features
+# Canonical winner from 8-config grid search (val F1 = 0.306).
+#
+# v2 adds separate dropout rates:
+#   dropout_encoder : inside transformer layers  (was single `dropout`)
+#   dropout_input   : after input projection     (NEW — set to 0.0 to match v1)
+#   dropout_head    : after pooling, before head (was single `dropout`)
+#
+# To replicate v1 exactly: set dropout_input=0.0 and dropout_head=dropout_encoder
+# To run the Optuna-optimised version: see optuna_search_{model}_{features}.json
+# ──────────────────────────────────────────────────────────────────────────
+
+# Architecture
+features: mel
+d_model: 64
+nhead: 4
+num_layers: 2
+
+# Dropout — v2 separate rates
+dropout_encoder: 0.5   # canonical grid winner
+dropout_input: 0.0     # set to 0.0 to match v1 baseline; tune via Optuna
+dropout_head: 0.5      # same as encoder to match v1 baseline
+
+# Optimiser
+lr: 0.001
