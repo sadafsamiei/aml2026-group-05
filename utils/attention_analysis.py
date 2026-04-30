@@ -1,5 +1,5 @@
 """
-scripts/attention_analysis.py
+utils/attention_analysis.py
 -----------------------------
 Compare attention weight profiles for Model 3 between:
   - d=32 mel (grid-selected, 26K params) — canonical Apr 16 run, test F1 0.221±0.013

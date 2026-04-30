@@ -1,5 +1,5 @@
 """
-scripts/attention_analysis_v2.py
+utils/attention_analysis_v2.py
 ---------------------------------
 Improved attention figures. Same data as attention_analysis.py but
 presentation-ready plots:
