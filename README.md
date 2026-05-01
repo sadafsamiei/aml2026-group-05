@@ -32,6 +32,8 @@ dashboard/
 └── methodology_tab.py      # Methodology and architecture diagrams
 
 experiments/
+├── pretrained_embeddings/
+│   └── extract_wav2vec2_embeddings.ipynb
 ├── chance_baseline.py
 ├── class_by_language.py
 ├── cm_comparison.py
@@ -41,8 +43,7 @@ experiments/
 ├── optuna_lr.py
 └── optuna_search.py
 
-pretrained_embeddings/
-└── extract_wav2vec2_embeddings.ipynb
+
 
 scripts/
 ├── audio_to_mfccs.py
