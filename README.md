@@ -69,6 +69,7 @@ utils/
 PROBLEMSETTING.md
 README.md
 requirements.txt
+project_report.pdf
 ```
 
 ---
