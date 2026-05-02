@@ -11,8 +11,8 @@ Plotly template).
 Five stages:
   1. Raw data & preprocessing
   2. Feature extraction
-  3. Hyperparameter tuning      ← reads grid_search_*.json
-  4. Multi-seed canonical training ← reads {lr_baseline,audio,attn}_multiseed_*.json
+  3. Hyperparameter tuning      ← Optuna best results only
+  4. Multi-seed canonical training ← reads final {lr_baseline,audio,attn}_multiseed_*.json
   5. Ablations & diagnostics    ← reads chance_baseline / error_analysis / loco JSONs
 
 Data sources are auto-detected from RES_DIR/results/. If a JSON is
@@ -32,16 +32,57 @@ import plotly.graph_objects as go
 # Loaders — kept self-contained so this file is portable
 # ===========================================================================
 
+def _candidate_result_dirs(directory: Path):
+    """Return likely results directories for local, Renku, and repo-relative runs."""
+    candidates = []
+    if directory is not None:
+        d = Path(directory)
+        candidates.extend([d, d / "results", d.parent / "results"])
+
+    candidates.extend([
+        Path("/home/renku/work/data/results"),
+        Path.cwd() / "results",
+        Path.cwd() / "data" / "results",
+        Path.cwd().parent / "data" / "results",
+    ])
+
+    seen, out = set(), []
+    for d in candidates:
+        try:
+            r = d.expanduser().resolve()
+        except Exception:
+            r = d
+        if str(r) not in seen:
+            seen.add(str(r))
+            out.append(r)
+    return out
+
+
 def _latest(directory: Path, pattern: str):
-    matches = sorted(directory.glob(pattern))
+    """Find the newest matching file across candidate result directories."""
+    matches = []
+    for d in _candidate_result_dirs(directory):
+        if d.exists():
+            matches.extend(d.glob(pattern))
+    matches = sorted(set(matches), key=lambda p: p.stat().st_mtime if p.exists() else 0)
     return matches[-1] if matches else None
 
 
 def _read_json(path):
-    if path is None or not Path(path).exists():
+    """Read JSON, with fallback lookup by basename in common results dirs."""
+    if path is None:
         return None
-    with open(path) as f:
-        return json.load(f)
+
+    p = Path(path)
+    candidates = [p]
+    if not p.exists():
+        candidates.extend([d / p.name for d in _candidate_result_dirs(p.parent)])
+
+    for candidate in candidates:
+        if candidate.exists():
+            with open(candidate) as f:
+                return json.load(f)
+    return None
 
 
 # Match grid_search_*.json files to (model_kind, feature_source)
@@ -107,23 +148,109 @@ def load_grid(results_dir: Path, filename: str):
     return df
 
 
-# Canonical multi-seed JSONs — these are well-documented in the project
+# Canonical multi-seed JSONs used by the final dashboard/report.
+# Transformer MFCC exact JSONs were not recoverable from RES_DIR/results, so those
+# two rows are supplied as final-report overrides below.
 CANONICAL_MULTISEED = {
-    ("Model 1 (LR)",        "MFCC"):     "lr_baseline_mfcc20_nodelta_multiseed_20260424_104145.json",
+    ("Model 1 (LR)",        "MFCC"):     "lr_baseline_mfcc20_multiseed_20260424_105805.json",
     ("Model 1 (LR)",        "Mel"):      "lr_baseline_mel_multiseed_20260424_110530.json",
     ("Model 1 (LR)",        "wav2vec2"): "lr_baseline_wav2vec2_multiseed_20260424_112544.json",
     ("Model 2 (mean pool)", "Mel"):      "audio_multiseed_20260416_230141.json",
     ("Model 2 (mean pool)", "wav2vec2"): "audio_multiseed_20260421_125550.json",
     ("Model 3 (attention)", "Mel"):      "attn_multiseed_20260416_230142.json",
-    ("Model 3 (attention)", "wav2vec2"): "attn_multiseed_20260421_000648.json",
+    ("Model 3 (attention)", "wav2vec2"): "attn_multiseed_20260422_192030.json",
 }
+
+MANUAL_MULTISEED_OVERRIDES = {
+    ("Model 2 (mean pool)", "MFCC"): {
+        "model": "AudioTransformer",
+        "feature": "MFCC",
+        "val_macro_f1": {"mean": 0.258, "std": 0.000},
+        "test_macro_f1": {"mean": 0.238, "std": 0.039},
+        "manual_override": True,
+        "source": "final report",
+    },
+    ("Model 3 (attention)", "MFCC"): {
+        "model": "AttentivePoolingTransformer",
+        "feature": "MFCC",
+        "val_macro_f1": {"mean": 0.257, "std": 0.000},
+        "test_macro_f1": {"mean": 0.237, "std": 0.026},
+        "manual_override": True,
+        "source": "final report",
+    },
+}
+
+CANONICAL_RUN_ORDER = [
+    ("Model 1 (LR)", "MFCC"),
+    ("Model 1 (LR)", "Mel"),
+    ("Model 1 (LR)", "wav2vec2"),
+    ("Model 2 (mean pool)", "MFCC"),
+    ("Model 2 (mean pool)", "Mel"),
+    ("Model 2 (mean pool)", "wav2vec2"),
+    ("Model 3 (attention)", "MFCC"),
+    ("Model 3 (attention)", "Mel"),
+    ("Model 3 (attention)", "wav2vec2"),
+]
 
 
 def load_multiseed(results_dir: Path, model: str, feature: str):
-    fn = CANONICAL_MULTISEED.get((model, feature))
+    key = (model, feature)
+    if key in MANUAL_MULTISEED_OVERRIDES:
+        return MANUAL_MULTISEED_OVERRIDES[key]
+    fn = CANONICAL_MULTISEED.get(key)
     if fn is None:
         return None
     return _read_json(results_dir / fn)
+
+
+def _metric_mean_std(metric):
+    """Return (mean, std) from dict/scalar metric formats."""
+    if isinstance(metric, dict):
+        return metric.get("mean"), metric.get("std", 0.0)
+    if isinstance(metric, (int, float)):
+        return float(metric), 0.0
+    return None, None
+
+
+def per_seed_values(ms):
+    """Extract seed labels, validation F1, and test F1 from LR/transformer schemas."""
+    if not ms:
+        return [], [], []
+
+    seeds = list(ms.get("seeds", []))
+    per_seed_test = list(ms.get("per_seed_test_f1", []))
+    per_seed_val = list(ms.get("per_seed_val_f1", []))
+
+    summaries = ms.get("per_seed_summaries", [])
+    if summaries and not per_seed_test:
+        seeds, per_seed_test, per_seed_val = [], [], []
+        for i, summary in enumerate(summaries):
+            seed_label = (
+                summary.get("seed")
+                or summary.get("run_tag")
+                or (ms.get("seeds", [])[i] if i < len(ms.get("seeds", [])) else f"seed {i+1}")
+            )
+            test_value = (
+                summary.get("test_macro_f1")
+                or summary.get("test_macro_f1_mean")
+                or (summary.get("fold_results", [{}])[0].get("test_macro_f1")
+                    if summary.get("fold_results") else None)
+            )
+            val_value = (
+                summary.get("val_macro_f1")
+                or summary.get("val_macro_f1_mean")
+                or (summary.get("fold_results", [{}])[0].get("val_macro_f1")
+                    if summary.get("fold_results") else None)
+            )
+            if test_value is not None:
+                seeds.append(seed_label)
+                per_seed_test.append(float(test_value))
+                per_seed_val.append(float(val_value) if val_value is not None else np.nan)
+
+    if not seeds and per_seed_test:
+        seeds = [42, 123, 456, 789, 2024][:len(per_seed_test)]
+
+    return seeds, per_seed_val, per_seed_test
 
 
 def canonical_test_f1(results_dir: Path, model: str, feature: str):
@@ -189,200 +316,6 @@ def info_card(title: str, body_html: str, accent: str,
         unsafe_allow_html=True,
     )
 
-
-
-
-# ===========================================================================
-# Architecture diagram helpers
-# ===========================================================================
-
-FEATURE_SHAPES = {
-    "MFCC": {"raw": "20 × T", "lr": "R40", "seq": "(B, T=230, F=20)"},
-    "Mel": {"raw": "128 × 230", "lr": "R256", "seq": "(B, T=230, F=128)"},
-    "wav2vec2": {"raw": "768 × T", "lr": "R1536", "seq": "(B, T, F=768)"},
-}
-
-
-def _rgba(hex_color: str, alpha: float) -> str:
-    if not isinstance(hex_color, str) or not hex_color.startswith("#") or len(hex_color) != 7:
-        return hex_color
-    r = int(hex_color[1:3], 16)
-    g = int(hex_color[3:5], 16)
-    b = int(hex_color[5:7], 16)
-    return f"rgba({r},{g},{b},{alpha})"
-
-
-def _arch_node(x, y, w, h, label, color, hover=""):
-    return {"x": x, "y": y, "w": w, "h": h, "label": label, "color": color, "hover": hover or label}
-
-
-def _draw_arch_box(fig, node, *, fill, text_color, font_size=13):
-    x, y, w, h = node["x"], node["y"], node["w"], node["h"]
-    fig.add_shape(
-        type="rect", x0=x - w / 2, y0=y - h / 2, x1=x + w / 2, y1=y + h / 2,
-        line=dict(color=node["color"], width=2), fillcolor=fill, layer="below"
-    )
-    fig.add_annotation(
-        x=x, y=y, text=node["label"], showarrow=False,
-        font=dict(size=font_size, color=text_color, family="Inter"),
-        align="center"
-    )
-    fig.add_trace(go.Scatter(
-        x=[x], y=[y], mode="markers",
-        marker=dict(size=24, color="rgba(0,0,0,0)"),
-        hovertemplate=node["hover"] + "<extra></extra>",
-        showlegend=False,
-    ))
-
-
-def _arch_edge(node, side, pad=0.008):
-    x, y, w, h = node["x"], node["y"], node["w"], node["h"]
-    return {
-        "left": (x - w / 2 - pad, y),
-        "right": (x + w / 2 + pad, y),
-        "top": (x, y + h / 2 + pad),
-        "bottom": (x, y - h / 2 - pad),
-    }[side]
-
-
-def _draw_arch_path(fig, points, color, width=2.1):
-    for (x0, y0), (x1, y1) in zip(points[:-2], points[1:-1]):
-        fig.add_shape(type="line", x0=x0, y0=y0, x1=x1, y1=y1,
-                      line=dict(color=color, width=width), layer="below")
-    (x0, y0), (x1, y1) = points[-2], points[-1]
-    fig.add_annotation(
-        x=x1, y=y1, ax=x0, ay=y0,
-        xref="x", yref="y", axref="x", ayref="y",
-        showarrow=True, arrowhead=3, arrowsize=1.0,
-        arrowwidth=width, arrowcolor=color,
-    )
-
-
-def _draw_arch_connector(fig, nodes, a, b, start_side="right", end_side="left", via=None, color="#CBD5E1"):
-    points = [_arch_edge(nodes[a], start_side)]
-    if via:
-        points.extend(via)
-    points.append(_arch_edge(nodes[b], end_side))
-    _draw_arch_path(fig, points, color=color)
-
-
-def _presentation_architecture_figure(model, feature, show_dropout, *, SURFACE_2, TEXT, TEXT_MUTED, ACCENT, ACCENT_2, COLOR_M1, COLOR_M2, COLOR_M3):
-    shp = FEATURE_SHAPES[feature]
-    fill = _rgba(SURFACE_2 if SURFACE_2.startswith('#') else '#1A2030', 0.97)
-    note_fill = _rgba('#0F172A', 0.97)
-    drop_fill = _rgba('#EC4899', 0.18)
-    drop_col = '#FF0AA5'
-    line_col = 'rgba(203,213,225,0.88)'
-    fig = go.Figure()
-
-    if model == 'Model 1 (LR)':
-        nodes = {
-            'in': _arch_node(0.10, 0.73, 0.16, 0.14, f'{feature}<br><span style="font-size:11px">{shp["raw"]}</span>', COLOR_M1),
-            'pool': _arch_node(0.31, 0.73, 0.19, 0.14, 'Time collapse<br><span style="font-size:11px">x = μ(X) ∥ σ(X)</span><br><span style="font-size:11px">→ ' + shp['lr'] + '</span>', ACCENT_2),
-            'scale': _arch_node(0.53, 0.73, 0.18, 0.14, 'StandardScaler<br><span style="font-size:11px">x̂ = (x-μ_tr)/σ_tr</span><br><span style="font-size:11px">fit on train only</span>', ACCENT),
-            'clf': _arch_node(0.73, 0.73, 0.20, 0.14, 'Logistic regression<br><span style="font-size:11px">lbfgs · L2 · balanced</span>', COLOR_M1),
-            'out': _arch_node(0.93, 0.73, 0.12, 0.14, '4-class output', COLOR_M3),
-            'opt': _arch_node(0.73, 0.30, 0.28, 0.14, 'Optuna line search<br><span style="font-size:11px">best C = 0.00492</span><br><span style="font-size:11px">0.277 → 0.311</span>', drop_col),
-            'param': _arch_node(0.43, 0.30, 0.18, 0.12, 'Total params<br><span style="font-size:11px">Mel 1,028</span><br><span style="font-size:11px">MFCC 164 · w2v2 6,148</span>', '#64748B'),
-        }
-        for k, n in nodes.items():
-            _draw_arch_box(fig, n, fill=(drop_fill if k == 'opt' else note_fill if k == 'param' else fill), text_color=TEXT)
-        for a, b in [('in', 'pool'), ('pool', 'scale'), ('scale', 'clf'), ('clf', 'out')]:
-            _draw_arch_connector(fig, nodes, a, b, color=line_col)
-        _draw_arch_connector(fig, nodes, 'opt', 'clf', start_side='top', end_side='bottom', color=drop_col)
-        height = 620
-
-    elif model == 'Model 2 (mean pool)':
-        nodes = {
-            'in': _arch_node(0.09, 0.73, 0.16, 0.14, f'Input sequence<br><span style="font-size:11px">{shp["seq"]}</span>', COLOR_M2),
-            'embed': _arch_node(0.29, 0.73, 0.18, 0.14, 'Embedding<br><span style="font-size:11px">Linear(F→d) + pos_enc</span>', ACCENT_2),
-            'enc': _arch_node(0.52, 0.73, 0.22, 0.14, 'Transformer encoder<br><span style="font-size:11px">pre-norm · L layers</span><br><span style="font-size:11px">H=4 · FFN d→4d→d</span>', COLOR_M2),
-            'pool': _arch_node(0.74, 0.73, 0.18, 0.14, 'Masked mean pool<br><span style="font-size:11px">ĥ = (1/T_real) Σ hₜ</span><br><span style="font-size:11px">padding excluded</span>', ACCENT),
-            'head': _arch_node(0.93, 0.73, 0.11, 0.14, 'Linear head<br><span style="font-size:11px">Rᵈ → R⁴</span>', COLOR_M3),
-            'block': _arch_node(0.52, 0.28, 0.34, 0.16, 'One encoder block<br><span style="font-size:11px">LayerNorm → MHA → residual</span><br><span style="font-size:11px">LayerNorm → FFN → residual</span>', '#64748B'),
-        }
-        if show_dropout:
-            nodes.update({
-                'di': _arch_node(0.29, 0.90, 0.14, 0.09, 'dropout_input<br><span style="font-size:10px">v2</span>', drop_col),
-                'de': _arch_node(0.52, 0.90, 0.15, 0.09, 'dropout_encoder<br><span style="font-size:10px">v2</span>', drop_col),
-                'dh': _arch_node(0.74, 0.90, 0.14, 0.09, 'dropout_head<br><span style="font-size:10px">v2</span>', drop_col),
-            })
-        for k, n in nodes.items():
-            _draw_arch_box(fig, n, fill=(drop_fill if k in ['di', 'de', 'dh'] else note_fill if k == 'block' else fill), text_color=TEXT)
-        for a, b in [('in', 'embed'), ('embed', 'enc'), ('enc', 'pool'), ('pool', 'head')]:
-            _draw_arch_connector(fig, nodes, a, b, color=line_col)
-        _draw_arch_connector(fig, nodes, 'block', 'enc', start_side='top', end_side='bottom', via=[(0.52, 0.43), (0.52, 0.57)], color=line_col)
-        if show_dropout:
-            _draw_arch_connector(fig, nodes, 'di', 'embed', start_side='bottom', end_side='top', color=drop_col)
-            _draw_arch_connector(fig, nodes, 'de', 'enc', start_side='bottom', end_side='top', color=drop_col)
-            _draw_arch_connector(fig, nodes, 'dh', 'pool', start_side='bottom', end_side='top', color=drop_col)
-        height = 660
-
-    else:
-        nodes = {
-            'audio': _arch_node(0.12, 0.79, 0.16, 0.14, f'Audio input<br><span style="font-size:11px">{shp["seq"]}</span>', COLOR_M3),
-            'embed': _arch_node(0.33, 0.79, 0.18, 0.14, 'Audio embedding<br><span style="font-size:11px">input_proj + pos_enc</span>', ACCENT_2),
-            'enc': _arch_node(0.54, 0.79, 0.20, 0.14, 'Transformer encoder<br><span style="font-size:11px">pre-norm · L layers</span><br><span style="font-size:11px">H = (h₁,…,h_T)</span>', COLOR_M3),
-            'meta': _arch_node(0.12, 0.52, 0.16, 0.14, 'Metadata<br><span style="font-size:11px">age z-score ⊕ gender</span>', ACCENT),
-            'mproj': _arch_node(0.34, 0.52, 0.20, 0.14, 'Metadata projection<br><span style="font-size:11px">Linear(2→d) + LayerNorm</span><br><span style="font-size:11px">q ∈ Rᵈ</span>', ACCENT),
-            'pool': _arch_node(0.70, 0.52, 0.22, 0.16, 'Attentive pooling<br><span style="font-size:11px">sₜ = qᵀhₜ / (√d · τ)</span><br><span style="font-size:11px">α = softmax(s), ĥ = Σ αₜ hₜ</span>', drop_col),
-            'head': _arch_node(0.92, 0.52, 0.11, 0.14, 'Linear head<br><span style="font-size:11px">Rᵈ → R⁴</span>', COLOR_M3),
-            'note': _arch_node(0.70, 0.22, 0.24, 0.12, 'Attention details<br><span style="font-size:11px">τ learned scalar</span><br><span style="font-size:11px">padding masked to 0</span>', '#64748B'),
-        }
-        if show_dropout:
-            nodes.update({
-                'di': _arch_node(0.33, 0.93, 0.14, 0.09, 'dropout_input<br><span style="font-size:10px">v2</span>', drop_col),
-                'de': _arch_node(0.54, 0.93, 0.15, 0.09, 'dropout_encoder<br><span style="font-size:10px">v2</span>', drop_col),
-                'dh': _arch_node(0.70, 0.88, 0.10, 0.08, 'dropout_head<br><span style="font-size:10px">v2</span>', drop_col),
-                'dm': _arch_node(0.34, 0.14, 0.14, 0.09, 'dropout_meta<br><span style="font-size:10px">v2</span>', drop_col),
-            })
-        for k, n in nodes.items():
-            fill_color = drop_fill if k in ['di', 'de', 'dh', 'dm', 'pool'] else note_fill if k == 'note' else fill
-            _draw_arch_box(fig, n, fill=fill_color, text_color=TEXT)
-        _draw_arch_connector(fig, nodes, 'audio', 'embed', color=line_col)
-        _draw_arch_connector(fig, nodes, 'embed', 'enc', color=line_col)
-        _draw_arch_connector(fig, nodes, 'meta', 'mproj', color=line_col)
-        _draw_arch_connector(fig, nodes, 'enc', 'pool', start_side='bottom', end_side='top', via=[(0.54, 0.66), (0.70, 0.66)], color=drop_col)
-        _draw_arch_connector(fig, nodes, 'mproj', 'pool', start_side='right', end_side='left', color=drop_col)
-        _draw_arch_connector(fig, nodes, 'pool', 'head', color=line_col)
-        if show_dropout:
-            _draw_arch_connector(fig, nodes, 'di', 'embed', start_side='bottom', end_side='top', color=drop_col)
-            _draw_arch_connector(fig, nodes, 'de', 'enc', start_side='bottom', end_side='top', color=drop_col)
-            _draw_arch_connector(fig, nodes, 'dh', 'pool', start_side='bottom', end_side='top', color=drop_col)
-            _draw_arch_connector(fig, nodes, 'dm', 'mproj', start_side='top', end_side='bottom', color=drop_col)
-        fig.add_annotation(x=0.05, y=0.88, text='Audio branch', showarrow=False, font=dict(size=14, color=TEXT_MUTED, family='Inter'))
-        fig.add_annotation(x=0.05, y=0.61, text='Metadata branch', showarrow=False, font=dict(size=14, color=TEXT_MUTED, family='Inter'))
-        height = 720
-
-    fig.update_layout(
-        height=height,
-        margin=dict(l=8, r=8, t=8, b=8),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        showlegend=False,
-        hoverlabel=dict(bgcolor=SURFACE_2, font=dict(color=TEXT, size=12)),
-    )
-    fig.update_xaxes(range=[0, 1], visible=False, fixedrange=True)
-    fig.update_yaxes(range=[0, 1], visible=False, fixedrange=True)
-    return fig
-
-
-def render_architecture_diagrams_section(*, SURFACE, SURFACE_2, BORDER, TEXT, TEXT_MUTED, ACCENT, ACCENT_2, COLOR_M1, COLOR_M2, COLOR_M3):
-    control_cols = st.columns([1.25, 1.05, 1.0])
-    with control_cols[0]:
-        model = st.selectbox('Architecture', ['Model 1 (LR)', 'Model 2 (mean pool)', 'Model 3 (attention)'], index=0, key='arch_model_selector')
-    with control_cols[1]:
-        feature = st.selectbox('Feature source', ['Mel', 'MFCC', 'wav2vec2'], index=0, key='arch_feature_selector')
-    with control_cols[2]:
-        show_dropout = st.toggle('Show v2 dropout', value=True, key='arch_dropout_toggle', disabled=(model == 'Model 1 (LR)'))
-
-    fig = _presentation_architecture_figure(
-        model, feature, show_dropout,
-        SURFACE_2=SURFACE_2, TEXT=TEXT, TEXT_MUTED=TEXT_MUTED,
-        ACCENT=ACCENT, ACCENT_2=ACCENT_2,
-        COLOR_M1=COLOR_M1, COLOR_M2=COLOR_M2, COLOR_M3=COLOR_M3,
-    )
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 # ===========================================================================
 # Main render function
@@ -616,7 +549,7 @@ def render_methodology_tab(
 
             f'<li><strong>L2 regularisation (tuned)</strong><br>'
             f'<span style="color:{TEXT_MUTED}; font-size:12px;">'
-            f'C selected via inner LOPO CV (see Stage 4).'
+            f'C selected via inner LOPO CV (see Stage 3).'
             f'</span></li>'
 
             f'</ol></div>',
@@ -787,76 +720,62 @@ def render_methodology_tab(
                 )
 
     # =======================================================================
-    # STAGE 3 — Model architecture diagrams
+    # STAGE 3 — Hyperparameter tuning
     # =======================================================================
     stage_header(
-        3, "Model architecture diagrams",
-        "Three model families were compared: a linear baseline on summary statistics, an audio-only transformer with mean pooling, and a metadata-query attentive transformer.",
-        ACCENT, SURFACE, SURFACE_2, BORDER_HI, TEXT, TEXT_MUTED,
-    )
-    render_architecture_diagrams_section(
-        SURFACE=SURFACE, SURFACE_2=SURFACE_2, BORDER=BORDER,
-        TEXT=TEXT, TEXT_MUTED=TEXT_MUTED, ACCENT=ACCENT, ACCENT_2=ACCENT_2,
-        COLOR_M1=COLOR_M1, COLOR_M2=COLOR_M2, COLOR_M3=COLOR_M3,
-    )
-
-    # =======================================================================
-    # STAGE 4 — Hyperparameter tuning
-    # =======================================================================
-    stage_header(
-        4, "Hyperparameter tuning — Optuna validates the result",
-        "Canonical grids define the baseline configurations, but the key tuning story is the Optuna extension: a continuous LR search finds the overall best model, while broader transformer searches fail to close the gap.",
+        3, "Hyperparameter tuning — Optuna best results",
+        "Optuna is the main tuning result. This section reports only the best tuned outcomes: LR improves strongly, Model 3 gains slightly, and Model 2 does not improve on test.",
         ACCENT, SURFACE, SURFACE_2, BORDER_HI, TEXT, TEXT_MUTED,
     )
 
     st.markdown(
         f'<div style="background:linear-gradient(135deg, {SURFACE} 0%, {SURFACE_2} 100%); '
-        f'border:1px solid {ACCENT}; border-left:4px solid {ACCENT}; '
+        f'border:1px solid #EC4899; border-left:4px solid #EC4899; '
         f'border-radius:14px; padding:20px 24px; margin-bottom:22px;">'
-        f'<div style="color:{ACCENT}; font-size:11px; letter-spacing:0.12em; '
-        f'text-transform:uppercase; font-weight:700; margin-bottom:8px;">Main tuning conclusion</div>'
+        f'<div style="color:#EC4899; font-size:11px; letter-spacing:0.12em; '
+        f'text-transform:uppercase; font-weight:700; margin-bottom:8px;">Optuna-first tuning summary</div>'
         f'<div style="color:{TEXT}; font-size:15px; line-height:1.72;">'
-        f'Optuna made the hyperparameter analysis stronger because it tested whether the canonical grids were simply too coarse. '
-        f'The result is asymmetric: <strong>LR improves a lot</strong> because continuous C search finds a better regularisation point, '
-        f'but <strong>the transformers do not gain meaningfully</strong>, even after 60-trial Bayesian searches over architecture, learning rate, and dropout.'
+        f'The strongest tuning result is <strong>LR Mel + Optuna</strong>: continuous search over C finds '
+        f'<code>C=0.00492</code> and raises test macro-F1 to <strong>0.311</strong>. '
+        f'The transformer Optuna runs are still important: they show that broader Bayesian search does not close the gap to LR.'
         f'</div></div>',
         unsafe_allow_html=True,
     )
 
-    optuna_results = pd.DataFrame([
+    optuna_best = pd.DataFrame([
         {
             "Model": "LR Mel",
-            "Search": "80-trial continuous C line search",
-            "Canonical": 0.277,
-            "Optuna": 0.311,
-            "Delta": 0.034,
-            "Best setting": "C = 0.00492",
-            "Interpretation": "Genuine gain; best result of the project.",
+            "Best test macro-F1": 0.311,
+            "Std": None,
+            "Search": "80-trial Optuna C search",
+            "Best hyperparameters": "C = 0.00492",
+            "Decision": "Best overall result; use Optuna LR.",
+            "Color": "#EC4899",
         },
         {
             "Model": "M2 Mel",
-            "Search": "60-trial architecture + dropout search",
-            "Canonical": 0.249,
-            "Optuna": 0.249,
-            "Delta": 0.000,
-            "Best setting": "best val trial test = 0.207",
-            "Interpretation": "No test gain; canonical result stands.",
+            "Best test macro-F1": 0.249,
+            "Std": 0.020,
+            "Search": "60-trial Optuna architecture/dropout search",
+            "Best hyperparameters": "Optuna best-val trial did not transfer to test",
+            "Decision": "No Optuna replacement; retained best M2 result.",
+            "Color": COLOR_M2,
         },
         {
             "Model": "M3 Mel",
-            "Search": "60-trial architecture + metadata-dropout search",
-            "Canonical": 0.221,
-            "Optuna": 0.233,
-            "Delta": 0.012,
-            "Best setting": "lr = 0.000124; 5-seed test = 0.233 ± 0.014",
-            "Interpretation": "Small gain only; still below LR and within speaker noise.",
+            "Best test macro-F1": 0.233,
+            "Std": 0.014,
+            "Search": "60-trial Optuna architecture + metadata-dropout search",
+            "Best hyperparameters": "lr = 0.000124; tuned dropout/meta branch",
+            "Decision": "Small Optuna gain, still below LR.",
+            "Color": COLOR_M3,
         },
     ])
 
     st.markdown(
         f'<div style="color:{ACCENT}; font-size:13px; font-weight:600; '
         f'margin: 12px 0 12px 0; letter-spacing:0.04em;">'
-        f'OPTUNA RESULTS — CANONICAL VS BAYESIAN SEARCH</div>',
+        f'BEST TUNED RESULTS</div>',
         unsafe_allow_html=True,
     )
 
@@ -864,33 +783,21 @@ def render_methodology_tab(
     with col_plot:
         fig = go.Figure()
         fig.add_trace(go.Bar(
-            x=optuna_results["Model"],
-            y=optuna_results["Canonical"],
-            name="Canonical",
-            marker=dict(color="rgba(96,165,250,0.78)", line=dict(width=0)),
-            text=[f"{v:.3f}" for v in optuna_results["Canonical"]],
+            x=optuna_best["Model"],
+            y=optuna_best["Best test macro-F1"],
+            marker=dict(
+                color=optuna_best["Color"],
+                line=dict(color="rgba(255,255,255,0.10)", width=1),
+            ),
+            text=[
+                f"{m:.3f}" if pd.isna(s) else f"{m:.3f} ± {s:.3f}"
+                for m, s in zip(optuna_best["Best test macro-F1"], optuna_best["Std"])
+            ],
             textposition="outside",
-            textfont=dict(color=TEXT, size=11),
-            hovertemplate="%{x}<br>Canonical test macro-F1: %{y:.3f}<extra></extra>",
+            textfont=dict(color=TEXT, size=12),
+            hovertemplate="%{x}<br>Best tuned test macro-F1: %{y:.3f}<extra></extra>",
+            showlegend=False,
         ))
-        fig.add_trace(go.Bar(
-            x=optuna_results["Model"],
-            y=optuna_results["Optuna"],
-            name="Optuna",
-            marker=dict(color="rgba(236,72,153,0.88)", line=dict(width=0)),
-            text=[f"{v:.3f}" for v in optuna_results["Optuna"]],
-            textposition="outside",
-            textfont=dict(color=TEXT, size=11),
-            hovertemplate="%{x}<br>Optuna test macro-F1: %{y:.3f}<extra></extra>",
-        ))
-        for _, row in optuna_results.iterrows():
-            label = f"+{row['Delta']:.3f}" if row["Delta"] > 0 else "no gain"
-            fig.add_annotation(
-                x=row["Model"], y=row["Optuna"] + 0.015,
-                text=label,
-                showarrow=False,
-                font=dict(size=12, color=ACCENT if row["Delta"] > 0 else TEXT_MUTED),
-            )
         fig.add_hline(
             y=0.250,
             line_dash="dash",
@@ -901,258 +808,205 @@ def render_methodology_tab(
             annotation_font=dict(color=TEXT_MUTED, size=11),
         )
         fig.update_layout(
-            barmode="group",
             height=390,
             margin=dict(l=10, r=10, t=35, b=35),
             yaxis=dict(title="Test macro-F1", range=[0.19, 0.34]),
             xaxis=dict(title=""),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0.0),
         )
         st.plotly_chart(fig, use_container_width=True)
 
     with col_cards:
-        for _, row in optuna_results.iterrows():
-            delta = f"+{row['Delta']:.3f}" if row["Delta"] > 0 else "0.000"
-            border = "#EC4899" if row["Model"] == "LR Mel" else ACCENT
+        for _, row in optuna_best.iterrows():
+            std_suffix = "" if pd.isna(row["Std"]) else f" ± {row['Std']:.3f}"
             st.markdown(
                 f'<div style="background:{SURFACE}; border:1px solid {BORDER}; '
-                f'border-left:3px solid {border}; border-radius:12px; '
+                f'border-left:3px solid {row["Color"]}; border-radius:12px; '
                 f'padding:15px 18px; margin-bottom:12px;">'
                 f'<div style="color:{TEXT}; font-size:14px; font-weight:700; margin-bottom:6px;">{row["Model"]}</div>'
+                f'<div style="color:{row["Color"]}; font-size:20px; font-weight:800; '
+                f'font-family:JetBrains Mono,monospace; margin-bottom:8px;">'
+                f'{row["Best test macro-F1"]:.3f}{std_suffix}</div>'
                 f'<div style="color:{TEXT_MUTED}; font-size:12px; line-height:1.55; margin-bottom:8px;">{row["Search"]}</div>'
-                f'<div style="color:{border}; font-size:13px; font-weight:700; margin-bottom:6px;">'
-                f'{row["Canonical"]:.3f} → {row["Optuna"]:.3f} ({delta})</div>'
-                f'<div style="color:{TEXT}; font-size:12px; line-height:1.55; margin-bottom:6px;">{row["Best setting"]}</div>'
-                f'<div style="color:{TEXT_MUTED}; font-size:12px; line-height:1.55;">{row["Interpretation"]}</div>'
+                f'<div style="color:{TEXT}; font-size:12px; line-height:1.55; margin-bottom:6px;">{row["Best hyperparameters"]}</div>'
+                f'<div style="color:{TEXT_MUTED}; font-size:12px; line-height:1.55;">{row["Decision"]}</div>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
 
-    st.markdown(
-        f'<div style="color:{TEXT_DIM}; font-size:12px; line-height:1.65; margin: 2px 0 18px 0;">'
-        f'The important result is not just that LR improved. It is that the transformer searches did not produce corresponding test gains, '
-        f'so the final conclusion is less vulnerable to the criticism that the neural models were simply under-tuned.'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        f'<div style="color:{ACCENT}; font-size:13px; font-weight:600; '
-        f'margin: 22px 0 12px 0; letter-spacing:0.04em;">'
-        f'WHAT OPTUNA SEARCHED</div>',
-        unsafe_allow_html=True,
-    )
-
     search_space = pd.DataFrame([
         {
-            "Model": "LR Mel",
-            "Trials": "80",
-            "Search space": "C log-uniform [1e-6, 1e6], seeded with 9 grid values",
-            "Objective": "Inner LOPO-CV macro-F1",
-            "Outcome": "C=0.00492, between 0.001 and 0.01",
+            "Run": "LR Mel",
+            "Optuna trials": "80",
+            "Search target": "Regularisation strength C",
+            "Best outcome": "0.311 test macro-F1",
         },
         {
-            "Model": "M2 Mel",
-            "Trials": "60",
-            "Search space": "d ∈ {32,64,128,192}; L ∈ [1,3]; lr [1e-4,1e-2]; 3 dropout rates",
-            "Objective": "Validation macro-F1",
-            "Outcome": "Best val=0.336, but test=0.207; canonical test 0.249 stands",
+            "Run": "M2 Mel",
+            "Optuna trials": "60",
+            "Search target": "d_model, layers, lr, dropout",
+            "Best outcome": "No test improvement over retained M2 result",
         },
         {
-            "Model": "M3 Mel",
-            "Trials": "60",
-            "Search space": "Same as M2 + dropout_meta in metadata query branch",
-            "Objective": "Validation macro-F1",
-            "Outcome": "Best trial val=0.322; 5-seed test 0.233 ± 0.014",
+            "Run": "M3 Mel",
+            "Optuna trials": "60",
+            "Search target": "Architecture, lr, dropout, dropout_meta",
+            "Best outcome": "0.233 ± 0.014 test macro-F1",
         },
     ])
     st.dataframe(search_space, use_container_width=True, hide_index=True)
 
-    with st.expander("Canonical grid details — kept as baseline, not the main tuning result", expanded=False):
-        st.markdown(
-            f'<div style="color:{TEXT_MUTED}; font-size:13px; line-height:1.65; margin-bottom:14px;">'
-            f'The canonical grids are still useful because they define the baseline configurations used before Optuna. '
-            f'The dashboard keeps them here for traceability, but the headline tuning evidence is the Optuna comparison above.'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        f'<div style="color:{TEXT_DIM}; font-size:12px; line-height:1.65; margin-top:8px;">'
+        f'This section is intentionally Optuna-focused: it shows the tuned outcomes that drive the report conclusion.'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
-        lr_c_data = []
-        for feat in ["MFCC", "Mel", "wav2vec2"]:
-            d = load_multiseed(results_dir, "Model 1 (LR)", feat)
-            if d is None:
-                continue
-            seed0 = d.get("per_seed_summaries", [{}])[0]
-            lr_c_data.append({
-                "Feature":        feat,
-                "C grid":         "1e-4 ... 1e+4 (9 values)",
-                "Selected C":     seed0.get("best_C"),
-                "Inner-CV F1":    f"{seed0.get('inner_cv_score', 0):.3f}",
-                "Canonical test F1": f"{d['test_macro_f1']['mean']:.3f}",
-            })
-        if lr_c_data:
-            st.dataframe(pd.DataFrame(lr_c_data), use_container_width=True, hide_index=True)
-
-        grid_options = [f"{m} — {f}" for (m, f, _, _) in GRID_FILE_MAPPING]
-        grid_choice = st.selectbox(
-            "Inspect transformer canonical grid",
-            options=grid_options,
-            index=0,
-            key="methodology_grid_choice",
-        )
-        chosen = GRID_FILE_MAPPING[grid_options.index(grid_choice)]
-        chosen_model, chosen_feature, chosen_file, manual_winner_id = chosen
-        grid_df = load_grid(results_dir, chosen_file)
-
-        if grid_df is None or grid_df.empty:
-            st.warning(f"Could not load grid file: {chosen_file}")
-        else:
-            if manual_winner_id is not None:
-                match = grid_df[grid_df["config_id"] == manual_winner_id].index
-                winner_idx = match[0] if len(match) else grid_df["val_f1"].idxmax()
-            else:
-                winner_idx = grid_df["val_f1"].idxmax()
-            grid_df["winner"] = grid_df.index == winner_idx
-
-            display_cols = ["config_id", "d_model", "num_layers", "dropout", "lr", "batch_size", "val_f1"]
-            display_cols = [c for c in display_cols if c in grid_df.columns]
-            st.dataframe(
-                grid_df[display_cols].sort_values("val_f1", ascending=False),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-    # =======================================================================
-    # STAGE 5 — Multi-seed canonical training
+    # STAGE 4 — Multi-seed canonical training
     # =======================================================================
     stage_header(
-        5, "Multi-seed canonical training",
-        "After hyperparameters are locked in, the winning configuration is "
-        "re-trained with 5 different random seeds. We report mean ± std — "
-        "not for model selection, but for variance estimation.",
+        4, "Multi-seed canonical training",
+        "Final model configurations are evaluated with 5 random seeds where applicable. "
+        "The selector below uses the final JSONs when available and report values for the two missing transformer-MFCC rows.",
         ACCENT, SURFACE, SURFACE_2, BORDER_HI, TEXT, TEXT_MUTED,
     )
 
-    canonical_options = list(CANONICAL_MULTISEED.keys())
-    option_labels = [f"{m} — {f}" for (m, f) in canonical_options]
+    canonical_options = CANONICAL_RUN_ORDER
+    option_labels = [
+        f"{m} — {f}" + (" (report value)" if (m, f) in MANUAL_MULTISEED_OVERRIDES else "")
+        for (m, f) in canonical_options
+    ]
     chosen_idx = st.selectbox(
         "Inspect run",
         options=range(len(option_labels)),
         format_func=lambda i: option_labels[i],
-        index=1,  # default to LR Mel — the headline result
+        index=1,  # default to LR Mel — the headline canonical run
         key="methodology_canonical_choice",
     )
     sel_model, sel_feat = canonical_options[chosen_idx]
     ms = load_multiseed(results_dir, sel_model, sel_feat)
 
     if ms is None:
-        st.warning(
-            f"Multi-seed JSON not found for {sel_model} — {sel_feat}.")
+        mean_test, std_test = None, None
+        st.warning(f"Multi-seed JSON not found for {sel_model} — {sel_feat}.")
     else:
-        seeds  = ms.get("seeds", [42, 123, 456, 789, 2024])
-        per_seed_test = ms.get("per_seed_test_f1", [])
-        per_seed_val  = ms.get("per_seed_val_f1",  [])
-        if not per_seed_test:
-            # LR JSONs use this path
-            per_seed_test = [s["test_macro_f1"]
-                              for s in ms.get("per_seed_summaries", [])]
-            per_seed_val  = [s["val_macro_f1"]
-                              for s in ms.get("per_seed_summaries", [])]
+        seeds, per_seed_val, per_seed_test = per_seed_values(ms)
+        mean_test, std_test = _metric_mean_std(ms.get("test_macro_f1"))
+        mean_val, std_val = _metric_mean_std(ms.get("val_macro_f1"))
 
-        mean_test = ms["test_macro_f1"]["mean"]
-        std_test  = ms["test_macro_f1"]["std"]
-        mean_val  = ms["val_macro_f1"]["mean"]
-        std_val   = ms["val_macro_f1"]["std"]
-        gap_mean  = ms.get("val_to_test_gap", {}).get("mean", mean_val - mean_test)
-
-        col_a, col_b = st.columns([3, 2])
-
-        with col_a:
-            # Per-seed test F1 bar chart
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=[f"seed {s}" for s in seeds],
-                y=per_seed_test,
-                marker=dict(color=COLOR_M1, line=dict(width=0)),
-                text=[f"{v:.3f}" for v in per_seed_test],
-                textposition="outside",
-                textfont=dict(color=TEXT, size=11),
-                hovertemplate="seed %{x}: test F1 %{y:.4f}<extra></extra>",
-                showlegend=False,
-            ))
-            fig.add_hline(
-                y=mean_test, line_dash="dash", line_color=ACCENT,
-                line_width=2,
-                annotation_text=f"mean = {mean_test:.3f} ± {std_test:.3f}",
-                annotation_position="top left",
-                annotation_font=dict(color=ACCENT, size=11),
-            )
-            ymax = max(per_seed_test) * 1.18 if per_seed_test else 0.4
-            fig.update_layout(
-                title=dict(
-                    text=f"{sel_model} — {sel_feat}: "
-                         f"per-seed test F1 ({len(seeds)} seeds)",
-                    font=dict(size=13, color=TEXT),
-                ),
-                height=340,
-                margin=dict(l=10, r=10, t=50, b=40),
-                yaxis=dict(title="Test macro-F1",
-                           range=[0, max(ymax, 0.35)]),
-                xaxis=dict(title=""),
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-        with col_b:
-            # Aggregated stats card
-            note = ""
-            if std_test < 0.001:
-                note = (f"<div style='color:{TEXT_DIM}; font-size:11px; "
-                        f"line-height:1.55; margin-top:14px; "
-                        f"padding-top:12px; border-top:1px solid {BORDER};'>"
-                        f"σ = 0.000 because logistic regression with the lbfgs "
-                        f"solver is fully deterministic given the data. The "
-                        f"5-seed protocol is preserved for consistency with "
-                        f"Models 2 and 3.</div>")
-
-            st.markdown(
-                f'<div style="background:{SURFACE_2}; '
-                f'border:1px solid {BORDER_HI}; '
-                f'border-radius:14px; padding:22px 24px;">'
-
-                f'<div style="color:{ACCENT}; font-size:11px; '
-                f'letter-spacing:0.12em; text-transform:uppercase; '
-                f'font-weight:700; margin-bottom:18px;">'
-                f'Aggregated result</div>'
-
-                f'<div style="margin-bottom:14px;">'
-                f'<div style="color:{TEXT_MUTED}; font-size:11px;">'
-                f'Test macro-F1</div>'
-                f'<div style="color:{TEXT}; font-size:30px; font-weight:700; '
-                f'font-family:JetBrains Mono,monospace; line-height:1.1;">'
-                f'{mean_test:.3f}'
-                f'<span style="color:{TEXT_MUTED}; font-size:18px; '
-                f'margin-left:8px;">± {std_test:.3f}</span></div></div>'
-
-                f'<div style="margin-bottom:14px;">'
-                f'<div style="color:{TEXT_MUTED}; font-size:11px;">'
-                f'Val macro-F1</div>'
-                f'<div style="color:{TEXT}; font-size:18px; font-weight:600; '
-                f'font-family:JetBrains Mono,monospace;">'
-                f'{mean_val:.3f} ± {std_val:.3f}</div></div>'
-
-                f'<div>'
-                f'<div style="color:{TEXT_MUTED}; font-size:11px;">'
-                f'Val → Test gap</div>'
-                f'<div style="color:{TEXT}; font-size:18px; font-weight:600; '
-                f'font-family:JetBrains Mono,monospace;">'
-                f'{gap_mean:+.3f}</div></div>'
-
-                f'{note}'
-                f'</div>',
-                unsafe_allow_html=True,
+        if mean_test is None:
+            st.warning(f"Could not read test_macro_f1 for {sel_model} — {sel_feat}.")
+        else:
+            gap_mean = ms.get("val_to_test_gap", {}).get(
+                "mean",
+                None if mean_val is None else mean_val - mean_test,
             )
 
-    # =======================================================================
+            col_a, col_b = st.columns([3, 2])
+
+            with col_a:
+                if ms.get("manual_override"):
+                    st.markdown(
+                        f'<div style="background:{SURFACE}; border:1px solid {BORDER}; '
+                        f'border-left:3px solid {ACCENT}; border-radius:12px; '
+                        f'padding:22px 24px; min-height:320px;">'
+                        f'<div style="color:{ACCENT}; font-size:11px; letter-spacing:0.12em; '
+                        f'text-transform:uppercase; font-weight:700; margin-bottom:12px;">'
+                        f'Final report value</div>'
+                        f'<div style="color:{TEXT}; font-size:15px; line-height:1.7;">'
+                        f'The exact matching JSON for <strong>{sel_model} — {sel_feat}</strong> '
+                        f'was not found in <code>RES_DIR/results</code>. This row uses the submitted report value '
+                        f'so the dashboard remains consistent with the final table.'
+                        f'</div>'
+                        f'<div style="color:{TEXT_MUTED}; font-size:12px; line-height:1.6; '
+                        f'margin-top:16px; padding-top:14px; border-top:1px solid {BORDER};">'
+                        f'This affects only the two transformer-MFCC rows. All other canonical rows are loaded from JSON.</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    fig = go.Figure()
+                    seed_labels = [
+                        str(s).replace("audio_seed", "seed ").replace("attn_seed", "seed ")
+                        for s in seeds
+                    ]
+                    fig.add_trace(go.Bar(
+                        x=seed_labels,
+                        y=per_seed_test,
+                        marker=dict(color=COLOR_M1, line=dict(width=0)),
+                        text=[f"{v:.3f}" for v in per_seed_test],
+                        textposition="outside",
+                        textfont=dict(color=TEXT, size=11),
+                        hovertemplate="%{x}: test F1 %{y:.4f}<extra></extra>",
+                        showlegend=False,
+                    ))
+                    fig.add_hline(
+                        y=mean_test, line_dash="dash", line_color=ACCENT,
+                        line_width=2,
+                        annotation_text=f"mean = {mean_test:.3f} ± {std_test:.3f}",
+                        annotation_position="top left",
+                        annotation_font=dict(color=ACCENT, size=11),
+                    )
+                    ymax = max(per_seed_test) * 1.18 if per_seed_test else max(mean_test * 1.18, 0.35)
+                    fig.update_layout(
+                        title=dict(
+                            text=f"{sel_model} — {sel_feat}: per-seed test F1",
+                            font=dict(size=13, color=TEXT),
+                        ),
+                        height=340,
+                        margin=dict(l=10, r=10, t=50, b=40),
+                        yaxis=dict(title="Test macro-F1", range=[0, max(ymax, 0.35)]),
+                        xaxis=dict(title=""),
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+            with col_b:
+                note = ""
+                if ms.get("manual_override"):
+                    note = (
+                        f"<div style='color:{TEXT_DIM}; font-size:11px; line-height:1.55; "
+                        f"margin-top:14px; padding-top:12px; border-top:1px solid {BORDER};'>"
+                        f"Report override: exact JSON not found locally.</div>"
+                    )
+                elif std_test is not None and std_test < 0.001:
+                    note = (
+                        f"<div style='color:{TEXT_DIM}; font-size:11px; line-height:1.55; "
+                        f"margin-top:14px; padding-top:12px; border-top:1px solid {BORDER};'>"
+                        f"σ = 0.000 because logistic regression with lbfgs is deterministic for fixed data.</div>"
+                    )
+
+                val_text = "—" if mean_val is None else f"{mean_val:.3f} ± {std_val:.3f}"
+                gap_text = "—" if gap_mean is None else f"{gap_mean:+.3f}"
+
+                st.markdown(
+                    f'<div style="background:{SURFACE_2}; border:1px solid {BORDER_HI}; '
+                    f'border-radius:14px; padding:22px 24px;">'
+                    f'<div style="color:{ACCENT}; font-size:11px; letter-spacing:0.12em; '
+                    f'text-transform:uppercase; font-weight:700; margin-bottom:18px;">'
+                    f'Aggregated result</div>'
+
+                    f'<div style="margin-bottom:14px;">'
+                    f'<div style="color:{TEXT_MUTED}; font-size:11px;">Test macro-F1</div>'
+                    f'<div style="color:{TEXT}; font-size:30px; font-weight:700; '
+                    f'font-family:JetBrains Mono,monospace; line-height:1.1;">'
+                    f'{mean_test:.3f}'
+                    f'<span style="color:{TEXT_MUTED}; font-size:18px; margin-left:8px;">± {std_test:.3f}</span></div></div>'
+
+                    f'<div style="margin-bottom:14px;">'
+                    f'<div style="color:{TEXT_MUTED}; font-size:11px;">Val macro-F1</div>'
+                    f'<div style="color:{TEXT}; font-size:18px; font-weight:600; '
+                    f'font-family:JetBrains Mono,monospace;">{val_text}</div></div>'
+
+                    f'<div>'
+                    f'<div style="color:{TEXT_MUTED}; font-size:11px;">Val → Test gap</div>'
+                    f'<div style="color:{TEXT}; font-size:18px; font-weight:600; '
+                    f'font-family:JetBrains Mono,monospace;">{gap_text}</div></div>'
+
+                    f'{note}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
     # STAGE 5 — Ablations & diagnostics
     # =======================================================================
     stage_header(
