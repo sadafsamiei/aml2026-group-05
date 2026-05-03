@@ -22,53 +22,53 @@ The main result is that **Logistic Regression on mel summary statistics**, impro
 ```text
 configs/
 └── model/
-    ├── attn_mel.yaml
-    ├── attn_wav2vec2.yaml
-    ├── audio_mel.yaml
-    └── default.yaml
+    ├── attn_mel.yaml          # Hydra config: Model 3 on mel (d=32, L=1, dropout=0.3, lr=1e-3)
+    ├── attn_wav2vec2.yaml     # Hydra config: Model 3 on wav2vec2 (d=192, L=1, dropout=0.3, lr=5e-4)
+    ├── audio_mel.yaml         # Hydra config: Model 2 on mel (d=64, L=2, dropout=0.5, lr=1e-3)
+    └── default.yaml           # Shared defaults (batch_size, epochs, patience, label_smoothing)
 
 dashboard/
-├── app.py                  # Streamlit dashboard
-└── methodology_tab.py      # Methodology and architecture diagrams
+├── app.py                     # Streamlit dashboard entry point — 5 tabs (results, per-class, CMs, Optuna, methodology)
+└── methodology_tab.py         # Methodology tab content: pipeline overview + architecture diagrams
 
 experiments/
 ├── pretrained_embeddings/
-│   └── extract_wav2vec2_embeddings.ipynb
-├── chance_baseline.py
-├── class_by_language.py
-├── cm_comparison.py
-├── ensemble_seeds.py
-├── error_analysis.py
-├── loco_model1_mel.py
-├── optuna_lr.py
-└── optuna_search.py
+│   └── extract_wav2vec2_embeddings.ipynb   # One-off notebook: extracts frozen wav2vec2-base embeddings, caches to disk
+├── chance_baseline.py         # Computes uniform-random and stratified chance macro-F1 (4-class, 0.245 ± 0.027)
+├── class_by_language.py       # Computes class distributions per language (used for the INTER-by-language figure)
+├── cm_comparison.py           # Generates side-by-side row-normalised confusion matrices (Models 2 vs 3, wav2vec2)
+├── ensemble_seeds.py          # Ablation: averages logits across 5 seeds for M2 mel (result: −0.024 vs single-seed mean)
+├── error_analysis.py          # Computes the per-clip agreement table (which clips each model gets right/wrong) — drives the 110/40.9% finding
+├── loco_model1_mel.py         # Leave-One-Child-Out CV for Model 1 (LR mel) across all 9 children — σ_speaker = 0.053
+├── optuna_lr.py               # Optuna 80-trial continuous C line search for LR (extension; finds C=0.00492)
+└── optuna_search.py           # Optuna 60-trial TPE search for transformers (M2/M3, d/L/lr/dropouts)
 
 scripts/
-├── audio_to_mfccs.py
-├── train_hydra.py
-├── train_lr_baseline.py
-├── train_multiseed.py
-├── train_transformer_attn.py
-└── train_transformer_audio.py
+├── audio_to_mfccs.py          # Extracts 20-coefficient MFCCs (n_fft=2048, hop=512) and caches to disk
+├── train_hydra.py             # Hydra-based training runner — reads configs/model/*.yaml; supports flat overrides
+├── train_lr_baseline.py       # Trains Model 1 with inner-LOPO grid search over 9-point logspace C
+├── train_multiseed.py         # Wrapper that runs train_transformer_{audio,attn}.py for 5 seeds and aggregates results
+├── train_transformer_attn.py  # Trains Model 3 (AttentivePoolingTransformer); --grid_search for the 8-config sweep
+└── train_transformer_audio.py # Trains Model 2 (AudioTransformer mean-pool); --grid_search for the 8-config sweep
 
 src/
-├── config.py               # Paths and global config
-├── data_utils.py           # Dataset, splits, preprocessing
-├── models.py               # Transformer model definitions
-└── train_utils.py          # Training and evaluation helpers
+├── config.py                  # Paths, HPARAM_FULL hyperparameters, USE_PRETRAINED, METADATA_MODE flags
+├── data_utils.py              # Dataset classes (Spectrogram, MetadataSpectrogram), splits loader, per-clip norm, SpecAugment
+├── models.py                  # AudioTransformer + AttentivePoolingTransformer (v2 with 4 dropout locations)
+└── train_utils.py             # Training loop, evaluate(), early stopping, sanity checks (forward pass, NaN guards)
 
 utils/
-├── attention_analysis.py
-├── attention_analysis_v2.py
-├── extract_interesting_clips.py
-├── generate_heatmaps.py
-├── generate_spectrograms.py
-└── make_presentation_figures.py
+├── attention_analysis.py      # v1: extracts attention weights from Model 3, computes attention concentration / mean focus span
+├── attention_analysis_v2.py   # v2: same as above but loads multi-dropout v2 checkpoints (used after the Optuna extension)
+├── extract_interesting_clips.py # Categorises test clips into 6 agreement buckets (all-correct, all-wrong, LR-wins, etc.) — CSV for presentation
+├── generate_heatmaps.py       # Generates the per-class F1 heatmap (3 models × 4 classes × 2 feature sources)
+├── generate_spectrograms.py   # Generates and caches 128-bin log-mel spectrograms as PNGs (n_fft=2048, hop=512, fmax=8kHz)
+└── make_presentation_figures.py # Generates all 5 presentation figures (complexity scatter, heatmap, val-vs-test gap, INTER-by-lang, Optuna summary)
 
-PROBLEMSETTING.md
-README.md
-requirements.txt
-project_report.pdf
+PROBLEMSETTING.md              # Original course problem brief (provided by instructors)
+README.md                      # This file
+requirements.txt               # Python dependencies (torch, librosa, scikit-learn, optuna, streamlit, etc.)
+project_report.pdf             # Final compiled 18-page report
 ```
 
 ---
@@ -119,7 +119,7 @@ python scripts/audio_to_mfccs.py
 Generate wav2vec2 embeddings:
 
 ```bash
-jupyter notebook pretrained_embeddings/extract_wav2vec2_embeddings.ipynb
+jupyter notebook experiments/pretrained_embeddings/extract_wav2vec2_embeddings.ipynb
 ```
 
 ---
@@ -170,7 +170,7 @@ Run Optuna for Logistic Regression:
 python experiments/optuna_lr.py
 ```
 
-Run Optuna for transformer models:
+Run Optuna for transformer models (runs both Models 2 and 3 sequentially, ~6 hours total):
 
 ```bash
 python experiments/optuna_search.py
@@ -206,7 +206,7 @@ python utils/attention_analysis_v2.py
 Launch the Streamlit dashboard:
 
 ```bash
-streamlit run dashboard/app.py 
+streamlit run dashboard/app.py
 ```
 
 The dashboard shows:
