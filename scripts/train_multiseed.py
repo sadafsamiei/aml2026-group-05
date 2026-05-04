@@ -7,48 +7,30 @@ Runs the same model+hparams across N seeds, then aggregates val/test
 macro-F1 (mean ± std) and produces overlay plots that combine all seeds
 into a single figure for each diagnostic.
 
-Why
----
-Single-seed reporting on n_test=269 is not a defensible estimate of
-macro-F1. The Model 2 vs Model 3 delta from a single seed is well within
-sampling noise. This wrapper produces the mean ± std reporting that the
-final writeup needs, without changing models.py / data_utils.py /
-train_utils.py / the per-model training scripts.
+v2 dropout support
+------------------
+Optuna (v2) searches over four independent dropout locations:
+  --dropout_encoder  inside transformer encoder layers
+  --dropout_input    after input projection (NEW v2)
+  --dropout_head     after pooling, before classifier (NEW v2)
+  --dropout_meta     on metadata query (Model 3 only, NEW v2)
 
-Usage
------
-    # Model 3 (attentive pooling)
+If you pass these flags, they are forwarded individually to the trainer.
+The legacy --dropout flag is still supported and acts as a shortcut: it
+sets dropout_encoder = dropout_head = dropout (and dropout_meta = 0.0,
+dropout_input = 0.0) — i.e. the v1 behaviour.
+
+Usage (v1 / legacy)
+-------------------
     python scripts/train_multiseed.py --model attn  --seeds 42 123 456 \
-        --use_existing_splits --baseline_test_f1 0.267
+        --use_existing_splits --d_model 32 --num_layers 1 --dropout 0.3
 
-    # Model 2 (audio-only)
-    python scripts/train_multiseed.py --model audio --seeds 42 123 456 \
-        --use_existing_splits
-
-Standard hyperparameter overrides (--d_model, --num_layers, ...) are
-forwarded to the underlying trainer. The --grid_search flag is NOT
-supported here — multi-seed wraps a *single* config.
-
-Outputs (per run, tagged by run_tag = "{model}_multiseed_{timestamp}")
-----------------------------------------------------------------------
-  RES_DIR/results/{run_tag}.json
-      Aggregated mean ± std across seeds, plus full per-seed fold results
-      nested inside.
-
-  RES_DIR/figures/{run_tag}_training_curves.png
-      Two-panel overlay: train loss + val macro-F1, one line per seed.
-
-  RES_DIR/figures/{run_tag}_cm_val.png
-  RES_DIR/figures/{run_tag}_cm_test.png
-      Mean of per-seed row-normalised confusion matrices.
-
-  RES_DIR/figures/{run_tag}_attn_overlay_EXTEV.png   (Model 3 only)
-      EXTEV-class attention weight profile from one held-out val example,
-      one line per seed, with uniform reference dashed.
-
-Per-seed checkpoints, per-seed PNG figures, and per-seed JSONs are still
-written by the underlying trainers (with their own timestamps). They are
-left in place but the wrapper does not depend on them.
+Usage (v2 / Optuna winner reproduction)
+---------------------------------------
+    python scripts/train_multiseed.py --model audio --seeds 42 123 456 789 2024 \
+        --use_existing_splits --d_model 128 --num_layers 1 --lr 0.00512 \
+        --dropout_encoder 0.41443 --dropout_head 0.11117 --dropout_input 0.20783 \
+        --batch_size 32
 """
 
 import argparse
@@ -80,9 +62,6 @@ from data_utils import (
     check_metadata_viability, compute_meta_stats, load_png,
 )
 
-# Import run_single from BOTH per-model scripts. We rename them so we
-# can dispatch by --model. The scripts have different signatures, which
-# we handle in run_one_seed() below.
 from train_transformer_audio import run_single as run_single_audio
 from train_transformer_attn  import run_single as run_single_attn
 
@@ -92,7 +71,6 @@ from train_transformer_attn  import run_single as run_single_attn
 # ---------------------------------------------------------------------------
 
 def set_seed(seed: int):
-    """Seed Python, NumPy, and PyTorch (CPU + CUDA)."""
     import random
     random.seed(seed)
     np.random.seed(seed)
@@ -108,10 +86,6 @@ def set_seed(seed: int):
 def run_one_seed(model_name: str, seed: int, folds, f_dim, max_len,
                  hparams, device, use_meta, meta_stats_per_fold,
                  baseline_test_f1=None) -> dict:
-    """
-    Run the underlying single-run trainer once, with `seed`.
-    Returns the summary dict produced by the trainer.
-    """
     set_seed(seed)
     print(f"\n{'#'*62}")
     print(f"#  SEED {seed}  ({model_name})")
@@ -140,21 +114,10 @@ def run_one_seed(model_name: str, seed: int, folds, f_dim, max_len,
 def aggregate_seed_results(per_seed_summaries: list, seeds: list,
                            model_name: str, hparams: dict,
                            baseline_test_f1=None) -> dict:
-    """
-    Build the aggregated mean ± std summary across seeds.
-
-    Per-seed summaries each contain a single fold (fold 0) under
-    'fold_results' because we are using the holdout protocol with 9
-    participants. We pull val/test macro-F1 and per-class F1 from
-    that single fold for each seed.
-    """
-    val_f1s   = []
-    test_f1s  = []
+    val_f1s, test_f1s = [], []
     per_class_val  = {c: [] for c in cfg.CLASS_NAMES}
     per_class_test = {c: [] for c in cfg.CLASS_NAMES}
-    val_to_test_gaps = []
-    stopped_epochs   = []
-    elapsed_secs     = []
+    val_to_test_gaps, stopped_epochs, elapsed_secs = [], [], []
 
     for s in per_seed_summaries:
         fold0 = s["fold_results"][0]
@@ -190,12 +153,10 @@ def aggregate_seed_results(per_seed_summaries: list, seeds: list,
         "baseline_test_f1"  : baseline_test_f1,
         "per_seed_summaries": per_seed_summaries,
     }
-
     if baseline_test_f1 is not None:
         agg["delta_vs_baseline"] = {
             "mean": float(np.mean(test_f1s) - baseline_test_f1),
         }
-
     return agg
 
 
@@ -218,8 +179,8 @@ def print_aggregated_summary(agg: dict):
         ratio = abs(delta) / sigma if sigma > 0 else float("inf")
         flag  = "within seed noise" if ratio < 1.0 else (
                 "marginal" if ratio < 2.0 else "outside seed noise")
-        print(f"\n  Baseline (Model 2) test F1 : {agg['baseline_test_f1']:.4f}")
-        print(f"  Δ test F1                  : {delta:+.4f}  "
+        print(f"\n  Baseline test F1 : {agg['baseline_test_f1']:.4f}")
+        print(f"  Δ test F1        : {delta:+.4f}  "
               f"(|Δ| / σ = {ratio:.2f} → {flag})")
 
     print(f"\n  Per-seed test macro-F1:")
@@ -234,16 +195,11 @@ def print_aggregated_summary(agg: dict):
 
 
 # ---------------------------------------------------------------------------
-# Overlay plots
+# Overlay plots (unchanged from original)
 # ---------------------------------------------------------------------------
 
-def plot_training_curves_overlay(per_seed_summaries: list, seeds: list,
-                                 save_path: Path, n_present_classes: int,
-                                 title: str = ""):
-    """
-    Two-panel figure: train loss (left) and val macro-F1 (right).
-    One line per seed in each panel.
-    """
+def plot_training_curves_overlay(per_seed_summaries, seeds, save_path,
+                                 n_present_classes, title=""):
     try:
         import matplotlib; matplotlib.use("Agg")
         import matplotlib.pyplot as plt
@@ -253,20 +209,15 @@ def plot_training_curves_overlay(per_seed_summaries: list, seeds: list,
         cmap   = plt.get_cmap("tab10")
 
         for i, (s, summary) in enumerate(zip(seeds, per_seed_summaries)):
-            # `history` is added to fold_summary by the trainer patches
-            # (see scripts/train_transformer_audio.py and ..._attn.py).
-            # We still defensively check for None in case someone runs
-            # this wrapper against an unpatched trainer.
             fold0   = summary["fold_results"][0]
             history = fold0.get("history")
             if history is None:
-                print(f"  seed {s}: history missing — skipping in overlay. "
-                      f"Re-run with the patched trainer.")
+                print(f"  seed {s}: history missing — skipping in overlay.")
                 continue
             color = cmap(i % 10)
             axes[0].plot(history["train_loss"], color=color, lw=1.4,
                          label=f"seed {s}")
-            axes[1].plot(history["val_f1"],     color=color, lw=1.4,
+            axes[1].plot(history["val_f1"], color=color, lw=1.4,
                          label=f"seed {s}")
 
         axes[0].set_title("Train Loss"); axes[0].set_xlabel("Epoch")
@@ -292,29 +243,7 @@ def plot_training_curves_overlay(per_seed_summaries: list, seeds: list,
         print(f"Training curves overlay failed: {e}")
 
 
-def plot_mean_confusion_matrix(per_seed_summaries: list, split: str,
-                               save_path: Path, title: str = ""):
-    """
-    Mean of per-seed row-normalised confusion matrices.
-
-    Each per-seed summary now carries `{split}_preds` and `{split}_labels`
-    (added by the trainer patches). For each seed we compute a row-
-    normalised confusion matrix over the union of present classes, then
-    average those matrices element-wise. The averaged matrix is the
-    standard "what does the model do on each true class, on average
-    across runs" diagnostic.
-
-    Notes
-    -----
-    - Row normalisation = each row sums to 1 → cell (i,j) is "probability
-      the model predicts j when the true class is i". This is the
-      sensible thing to average across seeds (raw counts depend on
-      n_test which is constant here, but normalised rates are more
-      interpretable in the writeup).
-    - We restrict the label set to the union of all classes that appear
-      in either preds or labels across all seeds, so the matrix has a
-      consistent shape if any seed missed a class.
-    """
+def plot_mean_confusion_matrix(per_seed_summaries, split, save_path, title=""):
     try:
         import matplotlib; matplotlib.use("Agg")
         import matplotlib.pyplot as plt
@@ -322,18 +251,14 @@ def plot_mean_confusion_matrix(per_seed_summaries: list, split: str,
 
         pred_key  = f"{split}_preds"
         label_key = f"{split}_labels"
-
-        # Sanity-check that the patched fields exist on every seed.
         missing = [i for i, s in enumerate(per_seed_summaries)
                    if pred_key not in s["fold_results"][0]
                    or label_key not in s["fold_results"][0]]
         if missing:
-            print(f"  Mean confusion matrix ({split}): skipped — seeds "
-                  f"{missing} are missing {pred_key}/{label_key}. Re-run "
-                  f"those seeds with the patched trainer.")
+            print(f"  Mean CM ({split}): skipped — seeds {missing} "
+                  f"missing {pred_key}/{label_key}.")
             return
 
-        # Build the union label set across all seeds.
         all_label_ids = set()
         for s in per_seed_summaries:
             f0 = s["fold_results"][0]
@@ -343,7 +268,6 @@ def plot_mean_confusion_matrix(per_seed_summaries: list, split: str,
         from config import LABEL_DECODER
         names = [LABEL_DECODER.get(i, str(i)) for i in ids]
 
-        # Compute one normalised CM per seed, then average.
         cms = []
         for s in per_seed_summaries:
             f0 = s["fold_results"][0]
@@ -355,44 +279,31 @@ def plot_mean_confusion_matrix(per_seed_summaries: list, split: str,
         mean_cm = np.mean(np.stack(cms, axis=0), axis=0)
         std_cm  = np.std (np.stack(cms, axis=0), axis=0)
 
-        # Plot the mean CM with std overlaid in each cell as small text.
         n = len(ids)
         fig, ax = plt.subplots(figsize=(max(4.5, n * 2.2),
                                          max(3.5, n * 2.0)))
         disp = ConfusionMatrixDisplay(confusion_matrix=mean_cm,
                                       display_labels=names)
         disp.plot(ax=ax, colorbar=True, values_format=".2f", cmap="Blues")
-        # Add ± std under each cell value
         for i in range(n):
             for j in range(n):
                 ax.text(j, i + 0.30, f"±{std_cm[i, j]:.2f}",
-                        ha="center", va="center", fontsize=7,
-                        color="grey")
+                        ha="center", va="center", fontsize=7, color="grey")
         ax.set_title(title or f"{split.capitalize()} CM (mean over seeds)")
         plt.tight_layout()
         save_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
         plt.close()
-        print(f"Mean confusion matrix ({split}) → {save_path}")
+        print(f"Mean CM ({split}) → {save_path}")
     except ImportError:
         print(f"matplotlib/sklearn not available — skipping mean CM ({split})")
     except Exception as e:
-        print(f"Mean confusion matrix ({split}) failed: {e}")
+        print(f"Mean CM ({split}) failed: {e}")
 
 
-def plot_attention_overlay(model_name: str, per_seed_summaries: list,
-                           seeds: list, val_df, f_dim: int, max_len: int,
-                           device, use_meta: bool, meta_stats_per_fold,
-                           target_class: str, save_path: Path,
-                           title: str = ""):
-    """
-    Single-axis attention overlay for one example of `target_class`.
-    For each seed, we re-instantiate the model architecture, load that
-    seed's checkpoint, run a forward pass on the same example, and plot
-    the resulting attention weights.
-
-    All seeds use the SAME val example so the comparison is meaningful.
-    """
+def plot_attention_overlay(model_name, per_seed_summaries, seeds, val_df,
+                           f_dim, max_len, device, use_meta, meta_stats_per_fold,
+                           target_class, save_path, title=""):
     if model_name != "attn":
         return
 
@@ -401,21 +312,18 @@ def plot_attention_overlay(model_name: str, per_seed_summaries: list,
         import matplotlib.pyplot as plt
         from models import AttentivePoolingTransformer
 
-        # Pick one example of target_class from val_df, deterministically.
         cls_df = val_df[val_df["class4"] == target_class]
         if len(cls_df) == 0:
-            print(f"  No {target_class} examples in val — attention overlay skipped")
+            print(f"  No {target_class} examples in val — overlay skipped")
             return
         sample = cls_df.iloc[0]
 
-        # Build a one-row dataset for that sample.
         meta_stats = meta_stats_per_fold[0]
         ds = MetadataSpectrogramDataset(
             cls_df.head(1), LABEL_ENCODER, max_len, f_dim,
             meta_stats=meta_stats, use_external_meta=use_meta)
         x, mask, _, meta_t = ds[0]
 
-        # Real (non-padded) length so we can crop the x-axis sensibly.
         spec   = load_png(sample["png_path"], target_height=f_dim)
         T_real = min(spec.shape[1], max_len)
 
@@ -426,9 +334,13 @@ def plot_attention_overlay(model_name: str, per_seed_summaries: list,
         fig, ax = plt.subplots(figsize=(11, 4))
         cmap   = plt.get_cmap("tab10")
 
-        # Architecture must match what the trainer used. Pull from the
-        # first per-seed summary's hparams (all seeds share hparams here).
         hp = per_seed_summaries[0]["hparams"]
+
+        # Resolve dropout for model construction (handles both v1 and v2)
+        d_enc  = hp.get("dropout_encoder", hp.get("dropout", 0.3))
+        d_head = hp.get("dropout_head",    hp.get("dropout", 0.3))
+        d_in   = hp.get("dropout_input",   0.0)
+        d_meta = hp.get("dropout_meta",    0.0)
 
         for i, (s, summary) in enumerate(zip(seeds, per_seed_summaries)):
             ckpt_path = Path(summary["fold_results"][0]["checkpoint"])
@@ -436,13 +348,24 @@ def plot_attention_overlay(model_name: str, per_seed_summaries: list,
                 print(f"  Checkpoint missing for seed {s}: {ckpt_path}")
                 continue
 
-            model = AttentivePoolingTransformer(
-                input_dim=f_dim, d_model=hp["d_model"],
-                nhead=hp["nhead"], num_layers=hp["num_layers"],
-                dropout=hp["dropout"], num_classes=N_CLASSES,
-                max_len=max_len + 50,
-                use_external_meta=use_meta, meta_dim=2,
-            ).to(device)
+            # Try v2 signature first; fall back to v1 if model doesn't accept it
+            try:
+                model = AttentivePoolingTransformer(
+                    input_dim=f_dim, d_model=hp["d_model"],
+                    nhead=hp["nhead"], num_layers=hp["num_layers"],
+                    dropout_encoder=d_enc, dropout_input=d_in,
+                    dropout_head=d_head, dropout_meta=d_meta,
+                    num_classes=N_CLASSES, max_len=max_len + 50,
+                    use_external_meta=use_meta, meta_dim=2,
+                ).to(device)
+            except TypeError:
+                model = AttentivePoolingTransformer(
+                    input_dim=f_dim, d_model=hp["d_model"],
+                    nhead=hp["nhead"], num_layers=hp["num_layers"],
+                    dropout=d_enc, num_classes=N_CLASSES,
+                    max_len=max_len + 50,
+                    use_external_meta=use_meta, meta_dim=2,
+                ).to(device)
             model.load_state_dict(torch.load(ckpt_path, map_location=device))
             model.eval()
 
@@ -459,8 +382,7 @@ def plot_attention_overlay(model_name: str, per_seed_summaries: list,
         uniform = 1.0 / T_real
         ax.axhline(uniform, ls="--", color="grey", lw=1.0,
                    label=f"Uniform ({uniform:.4f})")
-        ax.set_xlabel("Time frame")
-        ax.set_ylabel("Attention weight")
+        ax.set_xlabel("Time frame"); ax.set_ylabel("Attention weight")
         ax.set_title(title or f"Attention profile — class {target_class} "
                               f"(same val example, {len(seeds)} seeds)")
         ax.grid(alpha=0.3)
@@ -502,30 +424,68 @@ def save_aggregated(agg: dict, path: Path):
 def parse_args():
     p = argparse.ArgumentParser(
         description="Multi-seed wrapper for Models 2 (audio) and 3 (attn)")
-    p.add_argument("--model", choices=["audio", "attn"], required=True,
-                   help="Which model to run multi-seed: 'audio' = Model 2, "
-                        "'attn' = Model 3")
-    p.add_argument("--seeds", type=int, nargs="+", default=[42, 123, 456],
-                   help="Random seeds to run (default: 42 123 456)")
+    p.add_argument("--model", choices=["audio", "attn"], required=True)
+    p.add_argument("--seeds", type=int, nargs="+", default=[42, 123, 456])
     p.add_argument("--preset", choices=["small", "full"], default="full")
     p.add_argument("--d_model",    type=int,   default=None)
     p.add_argument("--nhead",      type=int,   default=None)
     p.add_argument("--num_layers", type=int,   default=None)
-    p.add_argument("--dropout",    type=float, default=None)
+    # ── Dropout: legacy single flag + 4 v2 location-specific flags ──────
+    p.add_argument("--dropout",         type=float, default=None,
+                   help="Legacy v1: sets dropout_encoder=dropout_head=this. "
+                        "Ignored if any of --dropout_encoder/_head/_input/_meta given.")
+    p.add_argument("--dropout_encoder", type=float, default=None,
+                   help="v2: dropout inside transformer encoder layers")
+    p.add_argument("--dropout_head",    type=float, default=None,
+                   help="v2: dropout after pooling, before classifier")
+    p.add_argument("--dropout_input",   type=float, default=None,
+                   help="v2: dropout after input projection")
+    p.add_argument("--dropout_meta",    type=float, default=None,
+                   help="v2: dropout on metadata query (Model 3 only)")
+    # ── Standard ────────────────────────────────────────────────────────
     p.add_argument("--lr",         type=float, default=None)
     p.add_argument("--batch_size", type=int,   default=None)
     p.add_argument("--epochs",     type=int,   default=None)
     p.add_argument("--patience",   type=int,   default=None)
-    p.add_argument("--use_existing_splits", action="store_true",
-                   help="Load splits from RES_DIR/splits/ instead of rebuilding")
-    p.add_argument("--baseline_test_f1", type=float, default=None,
-                   help="Model 2 test F1 mean — for Δ vs baseline reporting "
-                        "(only meaningful for --model attn)")
+    p.add_argument("--use_existing_splits", action="store_true")
+    p.add_argument("--baseline_test_f1", type=float, default=None)
     p.add_argument("--attn_overlay_class", type=str, default="EXTEV",
-                   choices=["EXTEV", "INTER", "MOVE", "PLTOY"],
-                   help="Which class to use for the attention-weight overlay "
-                        "plot (Model 3 only)")
+                   choices=["EXTEV", "INTER", "MOVE", "PLTOY"])
     return p.parse_args()
+
+
+def resolve_dropouts(args):
+    """
+    Build the dropout entries that go into hparams.
+
+    Logic:
+      - If any of the v2 flags is set, use them (with 0.0 default for unset).
+      - Else if --dropout is set, fan it out to encoder+head, leave input+meta=0.
+      - Else fall back to whatever the preset has (caller doesn't override).
+    Returns a dict that should be merged into hparams.
+    """
+    v2_set = any(getattr(args, k) is not None for k in
+                 ["dropout_encoder", "dropout_head",
+                  "dropout_input",   "dropout_meta"])
+    if v2_set:
+        return {
+            "dropout_encoder": args.dropout_encoder if args.dropout_encoder is not None else 0.0,
+            "dropout_head"   : args.dropout_head    if args.dropout_head    is not None else 0.0,
+            "dropout_input"  : args.dropout_input   if args.dropout_input   is not None else 0.0,
+            "dropout_meta"   : args.dropout_meta    if args.dropout_meta    is not None else 0.0,
+            # keep legacy key for any downstream code that reads it
+            "dropout"        : args.dropout_encoder if args.dropout_encoder is not None else 0.0,
+        }
+    elif args.dropout is not None:
+        return {
+            "dropout"        : args.dropout,
+            "dropout_encoder": args.dropout,
+            "dropout_head"   : args.dropout,
+            "dropout_input"  : 0.0,
+            "dropout_meta"   : 0.0,
+        }
+    else:
+        return {}   # take from preset
 
 
 def main():
@@ -544,11 +504,17 @@ def main():
     # Build hyperparameters from preset + CLI overrides
     base    = HPARAM_SMALL if args.preset == "small" else HPARAM_FULL
     hparams = dict(base)
-    for key in ["d_model", "nhead", "num_layers", "dropout",
+
+    # Standard scalar overrides
+    for key in ["d_model", "nhead", "num_layers",
                 "lr", "batch_size", "epochs", "patience"]:
         v = getattr(args, key)
         if v is not None:
             hparams[key] = v
+
+    # Dropout overrides (v1 legacy + v2 multi-location)
+    hparams.update(resolve_dropouts(args))
+
     print(f"\nHyperparameters: {hparams}")
 
     # ── Data ────────────────────────────────────────────────────────────
@@ -578,7 +544,6 @@ def main():
     if args.model == "attn":
         meta_stats_per_fold = [compute_meta_stats(tr) for tr, _, _ in folds]
 
-    # We need val_df from fold 0 later for the attention overlay plot.
     val_df_fold0 = folds[0][1]
 
     # ── Per-seed runs ───────────────────────────────────────────────────
@@ -591,7 +556,7 @@ def main():
             baseline_test_f1=args.baseline_test_f1,
         )
         per_seed_summaries.append(summary)
-        # Free GPU memory between seeds to prevent hangs
+
     import gc
     gc.collect()
     if torch.cuda.is_available():

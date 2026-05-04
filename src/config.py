@@ -93,8 +93,8 @@ HPARAM_FULL = {
 }
 
 
-
 """
+
 HPARAM_FULL = {
     "d_model": 192, "nhead": 4, "num_layers": 1,
     "dropout": 0.3, "lr": 5e-4, "weight_decay": 1e-4,
@@ -108,11 +108,11 @@ HPARAM_DEFAULTS = HPARAM_FULL
 # ---------------------------------------------------------------------------
 # Feature-type switches
 # ---------------------------------------------------------------------------
-USE_MFCC = False
+USE_MFCC = True
 
 # Pretrained audio embeddings (wav2vec2-base). When True, loads .npy files
 # from PRETRAINED_DIR and overrides F_DIM to 768 (wav2vec2 embedding dim).
-USE_PRETRAINED = False   # ← flip to True when doing wav2vec2 runs
+USE_PRETRAINED = False  # ← flip to True when doing wav2vec2 runs
 
 assert not (USE_MFCC and USE_PRETRAINED), \
     "Cannot use both USE_MFCC and USE_PRETRAINED — pick one."

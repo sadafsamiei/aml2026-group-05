@@ -620,7 +620,7 @@ def _plot_cm(cm: np.ndarray, title: str):
         margin=dict(l=20, r=20, t=50, b=40),
         yaxis=dict(autorange="reversed"),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 # ---------------------------------------------------------------------------
@@ -749,7 +749,7 @@ with tab2:
             margin=dict(l=20, r=20, t=20, b=40),
             legend=dict(orientation="h", y=1.05, x=0),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     # Best result callout + numbers
     best = df_show.loc[df_show["test_f1"].idxmax()] if len(df_show) else None
@@ -796,7 +796,7 @@ with tab2:
         df_table["val_f1"]  = df_table["val_f1"].apply(lambda x: f"{x:.3f}")
         st.dataframe(
             df_table[["model", "feature", "params", "val_f1", "test_f1", "config"]],
-            hide_index=True, use_container_width=True,
+            hide_index=True, width="stretch",
         )
 
 # ===========================================================================
@@ -876,7 +876,7 @@ with tab3:
                 color=TEXT_MUTED,
             )
         fig.update_layout(**layout)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     # Confusion matrices (only for wav2vec2)
     if feat == "wav2vec2" and model_sel in (
@@ -931,7 +931,7 @@ def _render_clip_explorer():
     with head_l:
         st.markdown("### Explore individual test clips")
     with head_r:
-        if st.button("↻ Reload", use_container_width=True,
+        if st.button("↻ Reload", width="stretch",
                      help="Re-scan results dir and clear cached clips"):
             st.cache_data.clear()
             st.rerun()
@@ -1041,7 +1041,7 @@ def _render_clip_explorer():
     }).reset_index(drop=True)
 
     selection = st.dataframe(
-        display, hide_index=True, use_container_width=True, height=320,
+        display, hide_index=True, width="stretch", height=320,
         on_select="rerun", selection_mode="single-row",
     )
 
@@ -1086,7 +1086,7 @@ def _render_clip_explorer():
     spec_path = SPEC_DIR / f"{audio_id}.png"
     if spec_path.exists():
         st.markdown("**🎼 Mel spectrogram**")
-        st.image(str(spec_path), use_container_width=True)
+        st.image(str(spec_path), width="stretch")
     else:
         st.caption(f"Spectrogram not found: {spec_path}")
 
@@ -1255,7 +1255,7 @@ with tab5:
             # Mel spectrogram
             spec_path = SPEC_DIR / f"{clip['id']}.png"
             if spec_path.exists():
-                st.image(str(spec_path), use_container_width=True,
+                st.image(str(spec_path), width="stretch",
                          caption=f"Mel spectrogram — {clip['id']}")
 
         with right:

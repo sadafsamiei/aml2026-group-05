@@ -318,6 +318,462 @@ def info_card(title: str, body_html: str, accent: str,
 
 
 # ===========================================================================
+# Architecture diagram helpers
+# ===========================================================================
+
+FEATURE_SHAPES = {
+    "MFCC": {"raw": "20 × T", "lr": "R40", "seq": "(B, T=230, F=20)"},
+    "Mel": {"raw": "128 × 230", "lr": "R256", "seq": "(B, T=230, F=128)"},
+    "wav2vec2": {"raw": "768 × T", "lr": "R1536", "seq": "(B, T, F=768)"},
+}
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    """Convert #RRGGBB to rgba(r,g,b,a). If already non-hex, return unchanged."""
+    if not isinstance(hex_color, str) or not hex_color.startswith("#") or len(hex_color) != 7:
+        return hex_color
+    r = int(hex_color[1:3], 16)
+    g = int(hex_color[3:5], 16)
+    b = int(hex_color[5:7], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _arch_node(x, y, w, h, label, color, hover=""):
+    return {"x": x, "y": y, "w": w, "h": h, "label": label, "color": color, "hover": hover or label}
+
+
+def _draw_arch_box(fig, node, *, fill, text_color, font_size=13):
+    x, y, w, h = node["x"], node["y"], node["w"], node["h"]
+    fig.add_shape(
+        type="rect",
+        x0=x - w / 2,
+        y0=y - h / 2,
+        x1=x + w / 2,
+        y1=y + h / 2,
+        line=dict(color=node["color"], width=2),
+        fillcolor=fill,
+        layer="below",
+    )
+    fig.add_annotation(
+        x=x,
+        y=y,
+        text=node["label"],
+        showarrow=False,
+        font=dict(size=font_size, color=text_color, family="Inter"),
+        align="center",
+    )
+    # Invisible hover target so nodes are interactive without clutter.
+    fig.add_trace(
+        go.Scatter(
+            x=[x],
+            y=[y],
+            mode="markers",
+            marker=dict(size=24, color="rgba(0,0,0,0)"),
+            hovertemplate=node["hover"] + "<extra></extra>",
+            showlegend=False,
+        )
+    )
+
+
+def _arch_edge(node, side, pad=0.008):
+    x, y, w, h = node["x"], node["y"], node["w"], node["h"]
+    return {
+        "left": (x - w / 2 - pad, y),
+        "right": (x + w / 2 + pad, y),
+        "top": (x, y + h / 2 + pad),
+        "bottom": (x, y - h / 2 - pad),
+    }[side]
+
+
+def _draw_arch_path(fig, points, color, width=2.1):
+    for (x0, y0), (x1, y1) in zip(points[:-2], points[1:-1]):
+        fig.add_shape(
+            type="line",
+            x0=x0,
+            y0=y0,
+            x1=x1,
+            y1=y1,
+            line=dict(color=color, width=width),
+            layer="below",
+        )
+    (x0, y0), (x1, y1) = points[-2], points[-1]
+    fig.add_annotation(
+        x=x1,
+        y=y1,
+        ax=x0,
+        ay=y0,
+        xref="x",
+        yref="y",
+        axref="x",
+        ayref="y",
+        showarrow=True,
+        arrowhead=3,
+        arrowsize=1.0,
+        arrowwidth=width,
+        arrowcolor=color,
+    )
+
+
+def _draw_arch_connector(fig, nodes, a, b, start_side="right", end_side="left", via=None, color="#CBD5E1"):
+    points = [_arch_edge(nodes[a], start_side)]
+    if via:
+        points.extend(via)
+    points.append(_arch_edge(nodes[b], end_side))
+    _draw_arch_path(fig, points, color=color)
+
+
+def _presentation_architecture_figure(
+    model,
+    feature,
+    show_dropout,
+    *,
+    SURFACE_2,
+    TEXT,
+    TEXT_MUTED,
+    ACCENT,
+    ACCENT_2,
+    COLOR_M1,
+    COLOR_M2,
+    COLOR_M3,
+):
+    """Presentation-style computational graph for the three model families."""
+    shp = FEATURE_SHAPES[feature]
+    fill = _rgba(SURFACE_2 if SURFACE_2.startswith("#") else "#1A2030", 0.97)
+    note_fill = _rgba("#0F172A", 0.97)
+    drop_fill = _rgba("#EC4899", 0.18)
+    drop_col = "#FF0AA5"
+    line_col = "rgba(203,213,225,0.88)"
+    fig = go.Figure()
+
+    if model == "Model 1 (LR)":
+        nodes = {
+            "in": _arch_node(
+                0.10,
+                0.73,
+                0.16,
+                0.14,
+                f'{feature}<br><span style="font-size:11px">{shp["raw"]}</span>',
+                COLOR_M1,
+            ),
+            "pool": _arch_node(
+                0.31,
+                0.73,
+                0.19,
+                0.14,
+                'Time collapse<br><span style="font-size:11px">x = μ(X) ∥ σ(X)</span><br>'
+                f'<span style="font-size:11px">→ {shp["lr"]}</span>',
+                ACCENT_2,
+            ),
+            "scale": _arch_node(
+                0.53,
+                0.73,
+                0.18,
+                0.14,
+                'StandardScaler<br><span style="font-size:11px">x̂ = (x-μ_tr)/σ_tr</span><br>'
+                '<span style="font-size:11px">fit on train only</span>',
+                ACCENT,
+            ),
+            "clf": _arch_node(
+                0.73,
+                0.73,
+                0.20,
+                0.14,
+                'Logistic regression<br><span style="font-size:11px">lbfgs · L2 · balanced</span>',
+                COLOR_M1,
+            ),
+            "out": _arch_node(0.93, 0.73, 0.12, 0.14, "4-class output", COLOR_M3),
+            "opt": _arch_node(
+                0.73,
+                0.30,
+                0.28,
+                0.14,
+                'Optuna line search<br><span style="font-size:11px">best C = 0.00492</span><br>'
+                '<span style="font-size:11px">0.277 → 0.311</span>',
+                drop_col,
+            ),
+            "param": _arch_node(
+                0.43,
+                0.30,
+                0.18,
+                0.12,
+                'Total params<br><span style="font-size:11px">Mel 1,028</span><br>'
+                '<span style="font-size:11px">MFCC 164 · w2v2 6,148</span>',
+                "#64748B",
+            ),
+        }
+
+        for k, n in nodes.items():
+            _draw_arch_box(
+                fig,
+                n,
+                fill=(drop_fill if k == "opt" else note_fill if k == "param" else fill),
+                text_color=TEXT,
+            )
+        for a, b in [("in", "pool"), ("pool", "scale"), ("scale", "clf"), ("clf", "out")]:
+            _draw_arch_connector(fig, nodes, a, b, color=line_col)
+        _draw_arch_connector(fig, nodes, "opt", "clf", start_side="top", end_side="bottom", color=drop_col)
+        height = 620
+
+    elif model == "Model 2 (mean pool)":
+        nodes = {
+            "in": _arch_node(
+                0.09,
+                0.73,
+                0.16,
+                0.14,
+                f'Input sequence<br><span style="font-size:11px">{shp["seq"]}</span>',
+                COLOR_M2,
+            ),
+            "embed": _arch_node(
+                0.29,
+                0.73,
+                0.18,
+                0.14,
+                'Embedding<br><span style="font-size:11px">Linear(F→d) + pos_enc</span>',
+                ACCENT_2,
+            ),
+            "enc": _arch_node(
+                0.52,
+                0.73,
+                0.22,
+                0.14,
+                'Transformer encoder<br><span style="font-size:11px">pre-norm · L layers</span><br>'
+                '<span style="font-size:11px">H=4 · FFN d→4d→d</span>',
+                COLOR_M2,
+            ),
+            "pool": _arch_node(
+                0.74,
+                0.73,
+                0.18,
+                0.14,
+                'Masked mean pool<br><span style="font-size:11px">ĥ = (1/T_real) Σ hₜ</span><br>'
+                '<span style="font-size:11px">padding excluded</span>',
+                ACCENT,
+            ),
+            "head": _arch_node(
+                0.93,
+                0.73,
+                0.11,
+                0.14,
+                'Linear head<br><span style="font-size:11px">Rᵈ → R⁴</span>',
+                COLOR_M3,
+            ),
+            "block": _arch_node(
+                0.52,
+                0.28,
+                0.34,
+                0.16,
+                'One encoder block<br><span style="font-size:11px">LayerNorm → MHA → residual</span><br>'
+                '<span style="font-size:11px">LayerNorm → FFN → residual</span>',
+                "#64748B",
+            ),
+        }
+        if show_dropout:
+            nodes.update(
+                {
+                    "di": _arch_node(0.29, 0.90, 0.14, 0.09, 'dropout_input<br><span style="font-size:10px">v2</span>', drop_col),
+                    "de": _arch_node(0.52, 0.90, 0.15, 0.09, 'dropout_encoder<br><span style="font-size:10px">v2</span>', drop_col),
+                    "dh": _arch_node(0.74, 0.90, 0.14, 0.09, 'dropout_head<br><span style="font-size:10px">v2</span>', drop_col),
+                }
+            )
+        for k, n in nodes.items():
+            _draw_arch_box(
+                fig,
+                n,
+                fill=(drop_fill if k in ["di", "de", "dh"] else note_fill if k == "block" else fill),
+                text_color=TEXT,
+            )
+        for a, b in [("in", "embed"), ("embed", "enc"), ("enc", "pool"), ("pool", "head")]:
+            _draw_arch_connector(fig, nodes, a, b, color=line_col)
+        _draw_arch_connector(
+            fig,
+            nodes,
+            "block",
+            "enc",
+            start_side="top",
+            end_side="bottom",
+            via=[(0.52, 0.43), (0.52, 0.57)],
+            color=line_col,
+        )
+        if show_dropout:
+            _draw_arch_connector(fig, nodes, "di", "embed", start_side="bottom", end_side="top", color=drop_col)
+            _draw_arch_connector(fig, nodes, "de", "enc", start_side="bottom", end_side="top", color=drop_col)
+            _draw_arch_connector(fig, nodes, "dh", "pool", start_side="bottom", end_side="top", color=drop_col)
+        height = 660
+
+    else:
+        nodes = {
+            "audio": _arch_node(
+                0.12,
+                0.79,
+                0.16,
+                0.14,
+                f'Audio input<br><span style="font-size:11px">{shp["seq"]}</span>',
+                COLOR_M3,
+            ),
+            "embed": _arch_node(
+                0.33,
+                0.79,
+                0.18,
+                0.14,
+                'Audio embedding<br><span style="font-size:11px">input_proj + pos_enc</span>',
+                ACCENT_2,
+            ),
+            "enc": _arch_node(
+                0.54,
+                0.79,
+                0.20,
+                0.14,
+                'Transformer encoder<br><span style="font-size:11px">pre-norm · L layers</span><br>'
+                '<span style="font-size:11px">H = (h₁,…,h_T)</span>',
+                COLOR_M3,
+            ),
+            "meta": _arch_node(
+                0.12,
+                0.52,
+                0.16,
+                0.14,
+                'Metadata<br><span style="font-size:11px">age z-score ⊕ gender</span>',
+                ACCENT,
+            ),
+            "mproj": _arch_node(
+                0.34,
+                0.52,
+                0.20,
+                0.14,
+                'Metadata projection<br><span style="font-size:11px">Linear(2→d) + LayerNorm</span><br>'
+                '<span style="font-size:11px">q ∈ Rᵈ</span>',
+                ACCENT,
+            ),
+            "pool": _arch_node(
+                0.70,
+                0.52,
+                0.22,
+                0.16,
+                'Attentive pooling<br><span style="font-size:11px">sₜ = qᵀhₜ / (√d · τ)</span><br>'
+                '<span style="font-size:11px">α = softmax(s), ĥ = Σ αₜ hₜ</span>',
+                drop_col,
+            ),
+            "head": _arch_node(
+                0.92,
+                0.52,
+                0.11,
+                0.14,
+                'Linear head<br><span style="font-size:11px">Rᵈ → R⁴</span>',
+                COLOR_M3,
+            ),
+            "note": _arch_node(
+                0.70,
+                0.22,
+                0.24,
+                0.12,
+                'Attention details<br><span style="font-size:11px">τ learned scalar</span><br>'
+                '<span style="font-size:11px">padding masked to 0</span>',
+                "#64748B",
+            ),
+        }
+        if show_dropout:
+            nodes.update(
+                {
+                    "di": _arch_node(0.33, 0.93, 0.14, 0.09, 'dropout_input<br><span style="font-size:10px">v2</span>', drop_col),
+                    "de": _arch_node(0.54, 0.93, 0.15, 0.09, 'dropout_encoder<br><span style="font-size:10px">v2</span>', drop_col),
+                    "dh": _arch_node(0.70, 0.88, 0.10, 0.08, 'dropout_head<br><span style="font-size:10px">v2</span>', drop_col),
+                    "dm": _arch_node(0.34, 0.14, 0.14, 0.09, 'dropout_meta<br><span style="font-size:10px">v2</span>', drop_col),
+                }
+            )
+        for k, n in nodes.items():
+            fill_color = drop_fill if k in ["di", "de", "dh", "dm", "pool"] else note_fill if k == "note" else fill
+            _draw_arch_box(fig, n, fill=fill_color, text_color=TEXT)
+        _draw_arch_connector(fig, nodes, "audio", "embed", color=line_col)
+        _draw_arch_connector(fig, nodes, "embed", "enc", color=line_col)
+        _draw_arch_connector(fig, nodes, "meta", "mproj", color=line_col)
+        _draw_arch_connector(
+            fig,
+            nodes,
+            "enc",
+            "pool",
+            start_side="bottom",
+            end_side="top",
+            via=[(0.54, 0.66), (0.70, 0.66)],
+            color=drop_col,
+        )
+        _draw_arch_connector(fig, nodes, "mproj", "pool", start_side="right", end_side="left", color=drop_col)
+        _draw_arch_connector(fig, nodes, "pool", "head", color=line_col)
+        if show_dropout:
+            _draw_arch_connector(fig, nodes, "di", "embed", start_side="bottom", end_side="top", color=drop_col)
+            _draw_arch_connector(fig, nodes, "de", "enc", start_side="bottom", end_side="top", color=drop_col)
+            _draw_arch_connector(fig, nodes, "dh", "pool", start_side="bottom", end_side="top", color=drop_col)
+            _draw_arch_connector(fig, nodes, "dm", "mproj", start_side="top", end_side="bottom", color=drop_col)
+        fig.add_annotation(x=0.05, y=0.88, text="Audio branch", showarrow=False, font=dict(size=14, color=TEXT_MUTED, family="Inter"))
+        fig.add_annotation(x=0.05, y=0.61, text="Metadata branch", showarrow=False, font=dict(size=14, color=TEXT_MUTED, family="Inter"))
+        height = 720
+
+    fig.update_layout(
+        height=height,
+        margin=dict(l=8, r=8, t=8, b=8),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        hoverlabel=dict(bgcolor=SURFACE_2, font=dict(color=TEXT, size=12)),
+    )
+    fig.update_xaxes(range=[0, 1], visible=False, fixedrange=True)
+    fig.update_yaxes(range=[0, 1], visible=False, fixedrange=True)
+    return fig
+
+
+def render_architecture_diagrams_section(
+    *,
+    SURFACE,
+    SURFACE_2,
+    BORDER,
+    TEXT,
+    TEXT_MUTED,
+    ACCENT,
+    ACCENT_2,
+    COLOR_M1,
+    COLOR_M2,
+    COLOR_M3,
+):
+    """Interactive model-structure diagram selector."""
+    control_cols = st.columns([1.25, 1.05, 1.0])
+    with control_cols[0]:
+        model = st.selectbox(
+            "Architecture",
+            ["Model 1 (LR)", "Model 2 (mean pool)", "Model 3 (attention)"],
+            index=0,
+            key="arch_model_selector",
+        )
+    with control_cols[1]:
+        feature = st.selectbox(
+            "Feature source",
+            ["Mel", "MFCC", "wav2vec2"],
+            index=0,
+            key="arch_feature_selector",
+        )
+    with control_cols[2]:
+        show_dropout = st.toggle(
+            "Show v2 dropout",
+            value=True,
+            key="arch_dropout_toggle",
+            disabled=(model == "Model 1 (LR)"),
+        )
+
+    fig = _presentation_architecture_figure(
+        model,
+        feature,
+        show_dropout,
+        SURFACE_2=SURFACE_2,
+        TEXT=TEXT,
+        TEXT_MUTED=TEXT_MUTED,
+        ACCENT=ACCENT,
+        ACCENT_2=ACCENT_2,
+        COLOR_M1=COLOR_M1,
+        COLOR_M2=COLOR_M2,
+        COLOR_M3=COLOR_M3,
+    )
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+# ===========================================================================
 # Main render function
 # ===========================================================================
 
@@ -391,7 +847,7 @@ def render_methodology_tab(
             f'margin-bottom:6px;">Class distribution across all 1,009 clips</div>',
             unsafe_allow_html=True,
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with c2:
         info_card(
@@ -666,6 +1122,35 @@ def render_methodology_tab(
             unsafe_allow_html=True,
         )
 
+    # ── 2c: Detailed model structure diagrams ─────────────────────────
+    st.markdown(
+        f'<div style="color:{ACCENT}; font-size:13px; font-weight:600; '
+        f'margin: 30px 0 12px 0; letter-spacing:0.04em;">'
+        f'DETAILED MODEL STRUCTURE DIAGRAMS</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<div style="color:{TEXT_MUTED}; font-size:13px; line-height:1.65; '
+        f'margin-bottom:16px;">'
+        f'Select a model and feature source to inspect the computational graph. '
+        f'The diagrams show tensor shapes, pooling logic, dropout locations, '
+        f'and the metadata-query path used by Model 3.'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    render_architecture_diagrams_section(
+        SURFACE=SURFACE,
+        SURFACE_2=SURFACE_2,
+        BORDER=BORDER,
+        TEXT=TEXT,
+        TEXT_MUTED=TEXT_MUTED,
+        ACCENT=ACCENT,
+        ACCENT_2=ACCENT_2,
+        COLOR_M1=COLOR_M1,
+        COLOR_M2=COLOR_M2,
+        COLOR_M3=COLOR_M3,
+    )
+
     # ── 2c: Preprocessing choices we did NOT make ─────────────────────
     st.markdown(
         f'<div style="color:{ACCENT}; font-size:13px; font-weight:600; '
@@ -813,7 +1298,7 @@ def render_methodology_tab(
             yaxis=dict(title="Test macro-F1", range=[0.19, 0.34]),
             xaxis=dict(title=""),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_cards:
         for _, row in optuna_best.iterrows():
@@ -853,7 +1338,7 @@ def render_methodology_tab(
             "Best outcome": "0.233 ± 0.014 test macro-F1",
         },
     ])
-    st.dataframe(search_space, use_container_width=True, hide_index=True)
+    st.dataframe(search_space, width="stretch", hide_index=True)
 
     st.markdown(
         f'<div style="color:{TEXT_DIM}; font-size:12px; line-height:1.65; margin-top:8px;">'
@@ -958,7 +1443,7 @@ def render_methodology_tab(
                         yaxis=dict(title="Test macro-F1", range=[0, max(ymax, 0.35)]),
                         xaxis=dict(title=""),
                     )
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width="stretch")
 
             with col_b:
                 note = ""
