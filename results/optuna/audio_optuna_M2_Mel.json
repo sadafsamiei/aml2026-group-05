@@ -1,0 +1,957 @@
+{
+  "model_kind": "audio",
+  "features": "mel",
+  "n_trials": 60,
+  "n_complete": 60,
+  "best_params": {
+    "d_model": 32,
+    "num_layers": 2,
+    "lr": 0.0018251822823371186,
+    "dropout_encoder": 0.43766894834586495,
+    "dropout_head": 0.03923119248339027,
+    "dropout_input": 0.26689824419145397
+  },
+  "best_val_f1": 0.3357555864060265,
+  "best_test_f1": 0.20739600549010911,
+  "search_space": {
+    "d_model": [
+      32,
+      64,
+      128,
+      192
+    ],
+    "num_layers": [
+      1,
+      3
+    ],
+    "lr": [
+      0.0001,
+      0.01
+    ],
+    "dropout_encoder": [
+      0.1,
+      0.7
+    ],
+    "dropout_head": [
+      0.0,
+      0.5
+    ],
+    "dropout_input": [
+      0.0,
+      0.4
+    ],
+    "dropout_meta": [
+      0.0,
+      0.4
+    ]
+  },
+  "fixed_hparams": {
+    "nhead": 4,
+    "epochs": 100,
+    "patience": 15,
+    "weight_decay": 0.0001,
+    "label_smoothing": 0.0
+  },
+  "all_trials": [
+    {
+      "trial_id": 14,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0018251822823371186,
+        "dropout_encoder": 0.43766894834586495,
+        "dropout_head": 0.03923119248339027,
+        "dropout_input": 0.26689824419145397
+      },
+      "val_macro_f1": 0.3357555864060265,
+      "test_macro_f1": 0.20739600549010911,
+      "best_val_epoch": 34,
+      "stopped_epoch": 34
+    },
+    {
+      "trial_id": 13,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0016354624279189048,
+        "dropout_encoder": 0.2444847625005461,
+        "dropout_head": 0.17283039874065345,
+        "dropout_input": 0.2610724800899924
+      },
+      "val_macro_f1": 0.330362619836304,
+      "test_macro_f1": 0.23759684053801702,
+      "best_val_epoch": 41,
+      "stopped_epoch": 41
+    },
+    {
+      "trial_id": 44,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.001947363378638673,
+        "dropout_encoder": 0.6537541365095203,
+        "dropout_head": 0.22068896994882775,
+        "dropout_input": 0.34510580261468604
+      },
+      "val_macro_f1": 0.32335432231791283,
+      "test_macro_f1": 0.23719368299764848,
+      "best_val_epoch": 57,
+      "stopped_epoch": 57
+    },
+    {
+      "trial_id": 34,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.0020673457480856593,
+        "dropout_encoder": 0.6163405152354616,
+        "dropout_head": 0.16679136843434192,
+        "dropout_input": 0.22300706062912304
+      },
+      "val_macro_f1": 0.319806853003993,
+      "test_macro_f1": 0.21907007516763613,
+      "best_val_epoch": 33,
+      "stopped_epoch": 33
+    },
+    {
+      "trial_id": 9,
+      "params": {
+        "d_model": 32,
+        "num_layers": 1,
+        "lr": 0.002878805718308925,
+        "dropout_encoder": 0.48253448281312783,
+        "dropout_head": 0.44360637128816327,
+        "dropout_input": 0.18888597006477972
+      },
+      "val_macro_f1": 0.318861034962366,
+      "test_macro_f1": 0.24309561387943746,
+      "best_val_epoch": 54,
+      "stopped_epoch": 54
+    },
+    {
+      "trial_id": 57,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0006747391089609088,
+        "dropout_encoder": 0.5486020798681681,
+        "dropout_head": 0.007400315321265616,
+        "dropout_input": 0.21967548538200804
+      },
+      "val_macro_f1": 0.31865990560020413,
+      "test_macro_f1": 0.195839825276445,
+      "best_val_epoch": 63,
+      "stopped_epoch": 63
+    },
+    {
+      "trial_id": 32,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.006761648014774152,
+        "dropout_encoder": 0.6130437767783491,
+        "dropout_head": 0.16489586796596734,
+        "dropout_input": 0.2989362539222988
+      },
+      "val_macro_f1": 0.31445161240083985,
+      "test_macro_f1": 0.2430725303730677,
+      "best_val_epoch": 30,
+      "stopped_epoch": 30
+    },
+    {
+      "trial_id": 49,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.0024323364063421065,
+        "dropout_encoder": 0.6356304856065212,
+        "dropout_head": 0.042754304871968046,
+        "dropout_input": 0.3982507459265998
+      },
+      "val_macro_f1": 0.3121161591310845,
+      "test_macro_f1": 0.19926169863851623,
+      "best_val_epoch": 58,
+      "stopped_epoch": 58
+    },
+    {
+      "trial_id": 54,
+      "params": {
+        "d_model": 192,
+        "num_layers": 2,
+        "lr": 0.0016593935037439273,
+        "dropout_encoder": 0.6775516235456476,
+        "dropout_head": 0.14727493277356477,
+        "dropout_input": 0.35913611413861396
+      },
+      "val_macro_f1": 0.31200308408299204,
+      "test_macro_f1": 0.275644699629658,
+      "best_val_epoch": 56,
+      "stopped_epoch": 56
+    },
+    {
+      "trial_id": 22,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.00438659886695458,
+        "dropout_encoder": 0.5455455006716137,
+        "dropout_head": 0.18351678965289012,
+        "dropout_input": 0.29845532392250707
+      },
+      "val_macro_f1": 0.31130131627843305,
+      "test_macro_f1": 0.18388838406175867,
+      "best_val_epoch": 45,
+      "stopped_epoch": 45
+    },
+    {
+      "trial_id": 28,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.00715143974024556,
+        "dropout_encoder": 0.5267471457674433,
+        "dropout_head": 0.29479729490493395,
+        "dropout_input": 0.11871206534075061
+      },
+      "val_macro_f1": 0.3084340395486758,
+      "test_macro_f1": 0.25206983680260553,
+      "best_val_epoch": 24,
+      "stopped_epoch": 24
+    },
+    {
+      "trial_id": 27,
+      "params": {
+        "d_model": 192,
+        "num_layers": 3,
+        "lr": 0.0037069446159298846,
+        "dropout_encoder": 0.27408591690412587,
+        "dropout_head": 0.2287086675172635,
+        "dropout_input": 0.3044793283943926
+      },
+      "val_macro_f1": 0.3052256803230732,
+      "test_macro_f1": 0.25360814768761264,
+      "best_val_epoch": 45,
+      "stopped_epoch": 45
+    },
+    {
+      "trial_id": 21,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0026882418004641868,
+        "dropout_encoder": 0.45032023379331354,
+        "dropout_head": 0.33300032004268837,
+        "dropout_input": 0.167202037227674
+      },
+      "val_macro_f1": 0.305066912993363,
+      "test_macro_f1": 0.22706155558799915,
+      "best_val_epoch": 45,
+      "stopped_epoch": 45
+    },
+    {
+      "trial_id": 50,
+      "params": {
+        "d_model": 128,
+        "num_layers": 2,
+        "lr": 0.0013164522957388861,
+        "dropout_encoder": 0.471340943641643,
+        "dropout_head": 0.08617469094396793,
+        "dropout_input": 0.05587482187424589
+      },
+      "val_macro_f1": 0.3045345582460186,
+      "test_macro_f1": 0.3194241163653933,
+      "best_val_epoch": 27,
+      "stopped_epoch": 27
+    },
+    {
+      "trial_id": 1,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.0002310201887845295,
+        "dropout_encoder": 0.2100427059120603,
+        "dropout_head": 0.15212112147976886,
+        "dropout_input": 0.20990257265289514
+      },
+      "val_macro_f1": 0.3003170437986554,
+      "test_macro_f1": 0.2220420904630444,
+      "best_val_epoch": 56,
+      "stopped_epoch": 56
+    },
+    {
+      "trial_id": 42,
+      "params": {
+        "d_model": 32,
+        "num_layers": 1,
+        "lr": 0.003431919788738287,
+        "dropout_encoder": 0.6996012741228177,
+        "dropout_head": 0.1187486913951099,
+        "dropout_input": 0.2914058771564305
+      },
+      "val_macro_f1": 0.2989493935943387,
+      "test_macro_f1": 0.19286767409215763,
+      "best_val_epoch": 48,
+      "stopped_epoch": 48
+    },
+    {
+      "trial_id": 38,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.0037086451638610614,
+        "dropout_encoder": 0.11164632344063427,
+        "dropout_head": 0.1318090396080887,
+        "dropout_input": 0.18365422387522484
+      },
+      "val_macro_f1": 0.29850883809875683,
+      "test_macro_f1": 0.2501833655753043,
+      "best_val_epoch": 18,
+      "stopped_epoch": 18
+    },
+    {
+      "trial_id": 25,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0021888494425996597,
+        "dropout_encoder": 0.36751232730051875,
+        "dropout_head": 0.3314063332863683,
+        "dropout_input": 0.19110078550960918
+      },
+      "val_macro_f1": 0.29429828847442485,
+      "test_macro_f1": 0.2168688230008985,
+      "best_val_epoch": 28,
+      "stopped_epoch": 28
+    },
+    {
+      "trial_id": 24,
+      "params": {
+        "d_model": 32,
+        "num_layers": 1,
+        "lr": 0.00977384869200703,
+        "dropout_encoder": 0.4938403218244963,
+        "dropout_head": 0.08701967692287545,
+        "dropout_input": 0.1474691135164815
+      },
+      "val_macro_f1": 0.2936308123573607,
+      "test_macro_f1": 0.22554903832523515,
+      "best_val_epoch": 39,
+      "stopped_epoch": 39
+    },
+    {
+      "trial_id": 11,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0029749807592441275,
+        "dropout_encoder": 0.23890112329201182,
+        "dropout_head": 0.20197350645457057,
+        "dropout_input": 0.21189934782119846
+      },
+      "val_macro_f1": 0.2925246854594681,
+      "test_macro_f1": 0.23984208427794468,
+      "best_val_epoch": 26,
+      "stopped_epoch": 26
+    },
+    {
+      "trial_id": 31,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.004467676468964173,
+        "dropout_encoder": 0.5561298172547842,
+        "dropout_head": 0.1979306132487108,
+        "dropout_input": 0.30027718060572345
+      },
+      "val_macro_f1": 0.2913268267350929,
+      "test_macro_f1": 0.24448467352455922,
+      "best_val_epoch": 36,
+      "stopped_epoch": 36
+    },
+    {
+      "trial_id": 45,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.0014721908280707849,
+        "dropout_encoder": 0.6477037212528591,
+        "dropout_head": 0.26693434121371473,
+        "dropout_input": 0.34741544541590696
+      },
+      "val_macro_f1": 0.291317959163878,
+      "test_macro_f1": 0.2758203639657444,
+      "best_val_epoch": 72,
+      "stopped_epoch": 72
+    },
+    {
+      "trial_id": 2,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.0005404103854647331,
+        "dropout_encoder": 0.3736419905302215,
+        "dropout_head": 0.3925879806965068,
+        "dropout_input": 0.0798695128633439
+      },
+      "val_macro_f1": 0.2888394062078273,
+      "test_macro_f1": 0.22393324452105964,
+      "best_val_epoch": 47,
+      "stopped_epoch": 47
+    },
+    {
+      "trial_id": 43,
+      "params": {
+        "d_model": 192,
+        "num_layers": 1,
+        "lr": 0.0025385104452577915,
+        "dropout_encoder": 0.5846973025683512,
+        "dropout_head": 0.1658242459559316,
+        "dropout_input": 0.15876317458846156
+      },
+      "val_macro_f1": 0.2878914810887239,
+      "test_macro_f1": 0.17939149489168155,
+      "best_val_epoch": 30,
+      "stopped_epoch": 30
+    },
+    {
+      "trial_id": 47,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.001580526360810319,
+        "dropout_encoder": 0.33760607386749775,
+        "dropout_head": 0.21104932117582148,
+        "dropout_input": 0.33353597273206215
+      },
+      "val_macro_f1": 0.287391297510654,
+      "test_macro_f1": 0.2626890388701412,
+      "best_val_epoch": 28,
+      "stopped_epoch": 28
+    },
+    {
+      "trial_id": 39,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.0007158935121468883,
+        "dropout_encoder": 0.5208866618176877,
+        "dropout_head": 0.17483493857213173,
+        "dropout_input": 0.3204236348112734
+      },
+      "val_macro_f1": 0.28606248157972297,
+      "test_macro_f1": 0.26193051654147764,
+      "best_val_epoch": 18,
+      "stopped_epoch": 18
+    },
+    {
+      "trial_id": 29,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.0022739011953964564,
+        "dropout_encoder": 0.16717676664273157,
+        "dropout_head": 0.4062489474561767,
+        "dropout_input": 0.2553821864037466
+      },
+      "val_macro_f1": 0.28428605061617523,
+      "test_macro_f1": 0.22787752737474573,
+      "best_val_epoch": 28,
+      "stopped_epoch": 28
+    },
+    {
+      "trial_id": 40,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.0011083739543904414,
+        "dropout_encoder": 0.664959145024,
+        "dropout_head": 0.23473369937493066,
+        "dropout_input": 0.22063757890343205
+      },
+      "val_macro_f1": 0.28378682555445217,
+      "test_macro_f1": 0.19454440921234625,
+      "best_val_epoch": 22,
+      "stopped_epoch": 22
+    },
+    {
+      "trial_id": 59,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.00036185531412801853,
+        "dropout_encoder": 0.5000359830476484,
+        "dropout_head": 0.026205817902641006,
+        "dropout_input": 0.19736229394618995
+      },
+      "val_macro_f1": 0.28365393755650437,
+      "test_macro_f1": 0.30686184679378103,
+      "best_val_epoch": 30,
+      "stopped_epoch": 30
+    },
+    {
+      "trial_id": 48,
+      "params": {
+        "d_model": 64,
+        "num_layers": 3,
+        "lr": 0.003293337547102325,
+        "dropout_encoder": 0.22206826155851447,
+        "dropout_head": 0.4820046140298827,
+        "dropout_input": 0.12550302604221597
+      },
+      "val_macro_f1": 0.2822787676573106,
+      "test_macro_f1": 0.23608856793010147,
+      "best_val_epoch": 60,
+      "stopped_epoch": 60
+    },
+    {
+      "trial_id": 4,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.0009780337016659412,
+        "dropout_encoder": 0.12063311266913104,
+        "dropout_head": 0.45466020103939103,
+        "dropout_input": 0.10351199264000677
+      },
+      "val_macro_f1": 0.2806746731378017,
+      "test_macro_f1": 0.20889728827873158,
+      "best_val_epoch": 23,
+      "stopped_epoch": 23
+    },
+    {
+      "trial_id": 58,
+      "params": {
+        "d_model": 64,
+        "num_layers": 3,
+        "lr": 0.0006477942869311072,
+        "dropout_encoder": 0.5427402080103819,
+        "dropout_head": 0.003996651175772581,
+        "dropout_input": 0.22030579691706956
+      },
+      "val_macro_f1": 0.2806284436359001,
+      "test_macro_f1": 0.19623548082131434,
+      "best_val_epoch": 45,
+      "stopped_epoch": 45
+    },
+    {
+      "trial_id": 16,
+      "params": {
+        "d_model": 32,
+        "num_layers": 3,
+        "lr": 0.0017174008012157001,
+        "dropout_encoder": 0.3931137309157072,
+        "dropout_head": 0.09617993929419782,
+        "dropout_input": 0.2809352954768723
+      },
+      "val_macro_f1": 0.2785940947492775,
+      "test_macro_f1": 0.22112763848006056,
+      "best_val_epoch": 36,
+      "stopped_epoch": 36
+    },
+    {
+      "trial_id": 12,
+      "params": {
+        "d_model": 192,
+        "num_layers": 2,
+        "lr": 0.002885158697261695,
+        "dropout_encoder": 0.4813050359837836,
+        "dropout_head": 0.2866454888256146,
+        "dropout_input": 0.17621238727197938
+      },
+      "val_macro_f1": 0.2780987337327452,
+      "test_macro_f1": 0.267963481550769,
+      "best_val_epoch": 31,
+      "stopped_epoch": 31
+    },
+    {
+      "trial_id": 20,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0005209314402340293,
+        "dropout_encoder": 0.3123681312704892,
+        "dropout_head": 0.10827986316910844,
+        "dropout_input": 0.24537855322804908
+      },
+      "val_macro_f1": 0.27744863831820354,
+      "test_macro_f1": 0.24074998547260915,
+      "best_val_epoch": 29,
+      "stopped_epoch": 29
+    },
+    {
+      "trial_id": 26,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0007812634833498691,
+        "dropout_encoder": 0.43378711513593426,
+        "dropout_head": 0.15567264077341272,
+        "dropout_input": 0.23477768218654096
+      },
+      "val_macro_f1": 0.2766007371069951,
+      "test_macro_f1": 0.28960982670109486,
+      "best_val_epoch": 47,
+      "stopped_epoch": 47
+    },
+    {
+      "trial_id": 18,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0017020715965144508,
+        "dropout_encoder": 0.18180185467362636,
+        "dropout_head": 0.20611450031632098,
+        "dropout_input": 0.14686166139093593
+      },
+      "val_macro_f1": 0.2765306968453343,
+      "test_macro_f1": 0.224775863434403,
+      "best_val_epoch": 50,
+      "stopped_epoch": 50
+    },
+    {
+      "trial_id": 56,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.005678131967412526,
+        "dropout_encoder": 0.6309824031178454,
+        "dropout_head": 0.1080689624493451,
+        "dropout_input": 0.3085570969232999
+      },
+      "val_macro_f1": 0.2763424408014572,
+      "test_macro_f1": 0.18479594766589422,
+      "best_val_epoch": 34,
+      "stopped_epoch": 34
+    },
+    {
+      "trial_id": 51,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0018847376894647145,
+        "dropout_encoder": 0.5792177656728131,
+        "dropout_head": 0.18202488584986884,
+        "dropout_input": 0.31782192317369007
+      },
+      "val_macro_f1": 0.2756444992250053,
+      "test_macro_f1": 0.25877457696850464,
+      "best_val_epoch": 19,
+      "stopped_epoch": 19
+    },
+    {
+      "trial_id": 46,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.0020301361669789915,
+        "dropout_encoder": 0.39178151083895313,
+        "dropout_head": 0.31002808360760714,
+        "dropout_input": 0.37289840592054774
+      },
+      "val_macro_f1": 0.27527020402092117,
+      "test_macro_f1": 0.1516077026421854,
+      "best_val_epoch": 26,
+      "stopped_epoch": 26
+    },
+    {
+      "trial_id": 5,
+      "params": {
+        "d_model": 32,
+        "num_layers": 1,
+        "lr": 0.00869299151113955,
+        "dropout_encoder": 0.5650796940166687,
+        "dropout_head": 0.46974947078209456,
+        "dropout_input": 0.35793094017105953
+      },
+      "val_macro_f1": 0.27509172138511595,
+      "test_macro_f1": 0.26024603335587543,
+      "best_val_epoch": 19,
+      "stopped_epoch": 19
+    },
+    {
+      "trial_id": 30,
+      "params": {
+        "d_model": 32,
+        "num_layers": 1,
+        "lr": 0.0011968621274825592,
+        "dropout_encoder": 0.4097074674210493,
+        "dropout_head": 0.361346718924967,
+        "dropout_input": 0.20808080415926378
+      },
+      "val_macro_f1": 0.2732340574222745,
+      "test_macro_f1": 0.2176195544200993,
+      "best_val_epoch": 51,
+      "stopped_epoch": 51
+    },
+    {
+      "trial_id": 55,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.008566711540677677,
+        "dropout_encoder": 0.5987786261453143,
+        "dropout_head": 0.1961951632335442,
+        "dropout_input": 0.24572152350723436
+      },
+      "val_macro_f1": 0.27314361817786476,
+      "test_macro_f1": 0.255525762303929,
+      "best_val_epoch": 36,
+      "stopped_epoch": 36
+    },
+    {
+      "trial_id": 33,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.006734454495652379,
+        "dropout_encoder": 0.46479241568021257,
+        "dropout_head": 0.13137930195876174,
+        "dropout_input": 0.3775398210369199
+      },
+      "val_macro_f1": 0.27217419282636673,
+      "test_macro_f1": 0.2190195034697624,
+      "best_val_epoch": 37,
+      "stopped_epoch": 37
+    },
+    {
+      "trial_id": 35,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.0019152612861431566,
+        "dropout_encoder": 0.6179029153333794,
+        "dropout_head": 0.06758853026393347,
+        "dropout_input": 0.2012752707524521
+      },
+      "val_macro_f1": 0.2712660857229709,
+      "test_macro_f1": 0.2160747606887314,
+      "best_val_epoch": 25,
+      "stopped_epoch": 25
+    },
+    {
+      "trial_id": 41,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0058380810823576565,
+        "dropout_encoder": 0.6129554532366954,
+        "dropout_head": 0.15129990513448688,
+        "dropout_input": 0.26931534001818014
+      },
+      "val_macro_f1": 0.2649679754942913,
+      "test_macro_f1": 0.18912564224486733,
+      "best_val_epoch": 26,
+      "stopped_epoch": 26
+    },
+    {
+      "trial_id": 53,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0030717755388633456,
+        "dropout_encoder": 0.6907146172134975,
+        "dropout_head": 0.24973287248222215,
+        "dropout_input": 0.28838453582525486
+      },
+      "val_macro_f1": 0.2643892294970901,
+      "test_macro_f1": 0.21685750547895802,
+      "best_val_epoch": 26,
+      "stopped_epoch": 26
+    },
+    {
+      "trial_id": 17,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0008028836717487811,
+        "dropout_encoder": 0.5854812060759693,
+        "dropout_head": 0.02166223854476268,
+        "dropout_input": 0.3877079408194872
+      },
+      "val_macro_f1": 0.2599229496188177,
+      "test_macro_f1": 0.23123742360983146,
+      "best_val_epoch": 82,
+      "stopped_epoch": 82
+    },
+    {
+      "trial_id": 52,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0009040340307247338,
+        "dropout_encoder": 0.5200896210773475,
+        "dropout_head": 0.2173823412374125,
+        "dropout_input": 0.2609958030556991
+      },
+      "val_macro_f1": 0.25855212736175937,
+      "test_macro_f1": 0.25603709817855547,
+      "best_val_epoch": 47,
+      "stopped_epoch": 47
+    },
+    {
+      "trial_id": 19,
+      "params": {
+        "d_model": 192,
+        "num_layers": 3,
+        "lr": 0.00477615639126551,
+        "dropout_encoder": 0.43262521863956827,
+        "dropout_head": 0.0019400913134861447,
+        "dropout_input": 0.2744106773007044
+      },
+      "val_macro_f1": 0.25767476802041567,
+      "test_macro_f1": 0.22298128372853637,
+      "best_val_epoch": 24,
+      "stopped_epoch": 24
+    },
+    {
+      "trial_id": 3,
+      "params": {
+        "d_model": 192,
+        "num_layers": 1,
+        "lr": 0.00013492834268013249,
+        "dropout_encoder": 0.6693313223519999,
+        "dropout_head": 0.4828160165372797,
+        "dropout_input": 0.3233589392465845
+      },
+      "val_macro_f1": 0.25323452442096506,
+      "test_macro_f1": 0.1957618797270646,
+      "best_val_epoch": 64,
+      "stopped_epoch": 64
+    },
+    {
+      "trial_id": 0,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.00020511104188433984,
+        "dropout_encoder": 0.13485016730091967,
+        "dropout_head": 0.4330880728874676,
+        "dropout_input": 0.24044600469728353
+      },
+      "val_macro_f1": 0.24770255205037814,
+      "test_macro_f1": 0.1888733989892342,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 7,
+      "params": {
+        "d_model": 128,
+        "num_layers": 3,
+        "lr": 0.00014096175149815865,
+        "dropout_encoder": 0.6921321619603104,
+        "dropout_head": 0.3861223846483287,
+        "dropout_input": 0.07948627261366897
+      },
+      "val_macro_f1": 0.24457024915229247,
+      "test_macro_f1": 0.23271945594158058,
+      "best_val_epoch": 36,
+      "stopped_epoch": 36
+    },
+    {
+      "trial_id": 10,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.005092654431068477,
+        "dropout_encoder": 0.5027613188906302,
+        "dropout_head": 0.2828065453407016,
+        "dropout_input": 0.01549007998447316
+      },
+      "val_macro_f1": 0.243968878248974,
+      "test_macro_f1": 0.2162274618585298,
+      "best_val_epoch": 23,
+      "stopped_epoch": 23
+    },
+    {
+      "trial_id": 36,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.00100987385353398,
+        "dropout_encoder": 0.3569198557444312,
+        "dropout_head": 0.43565543256589867,
+        "dropout_input": 0.22644861554716017
+      },
+      "val_macro_f1": 0.24249449779911963,
+      "test_macro_f1": 0.23201250782817948,
+      "best_val_epoch": 25,
+      "stopped_epoch": 25
+    },
+    {
+      "trial_id": 6,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.0004473636174621269,
+        "dropout_encoder": 0.3332063738136892,
+        "dropout_head": 0.13567451588694796,
+        "dropout_input": 0.3314950036607718
+      },
+      "val_macro_f1": 0.23814870563820323,
+      "test_macro_f1": 0.2139132876439449,
+      "best_val_epoch": 31,
+      "stopped_epoch": 31
+    },
+    {
+      "trial_id": 37,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.00032460456563299794,
+        "dropout_encoder": 0.656331501357679,
+        "dropout_head": 0.2637440577769195,
+        "dropout_input": 0.2569449618618234
+      },
+      "val_macro_f1": 0.23807247274228405,
+      "test_macro_f1": 0.19067850118761187,
+      "best_val_epoch": 29,
+      "stopped_epoch": 29
+    },
+    {
+      "trial_id": 15,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0014613284960779615,
+        "dropout_encoder": 0.26747652651595394,
+        "dropout_head": 0.04351510710785967,
+        "dropout_input": 0.2742018432515737
+      },
+      "val_macro_f1": 0.23037698412698412,
+      "test_macro_f1": 0.2555140837606653,
+      "best_val_epoch": 29,
+      "stopped_epoch": 29
+    },
+    {
+      "trial_id": 23,
+      "params": {
+        "d_model": 32,
+        "num_layers": 3,
+        "lr": 0.001306535713052969,
+        "dropout_encoder": 0.6105495078041154,
+        "dropout_head": 0.2408055239029969,
+        "dropout_input": 0.23968203254196446
+      },
+      "val_macro_f1": 0.21974514802172182,
+      "test_macro_f1": 0.19695307640472737,
+      "best_val_epoch": 29,
+      "stopped_epoch": 29
+    },
+    {
+      "trial_id": 8,
+      "params": {
+        "d_model": 64,
+        "num_layers": 3,
+        "lr": 0.00014063366777718192,
+        "dropout_encoder": 0.31507943712656356,
+        "dropout_head": 0.05793452976256486,
+        "dropout_input": 0.34524137035023744
+      },
+      "val_macro_f1": 0.1858713925469319,
+      "test_macro_f1": 0.2627155475600762,
+      "best_val_epoch": 17,
+      "stopped_epoch": 17
+    }
+  ]
+}

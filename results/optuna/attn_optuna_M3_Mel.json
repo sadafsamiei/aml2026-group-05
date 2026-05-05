@@ -1,0 +1,1017 @@
+{
+  "model_kind": "attn",
+  "features": "mel",
+  "n_trials": 60,
+  "n_complete": 60,
+  "best_params": {
+    "d_model": 64,
+    "num_layers": 2,
+    "lr": 0.00012430376275638258,
+    "dropout_encoder": 0.38068599163410605,
+    "dropout_head": 0.2681623887839076,
+    "dropout_input": 0.23130480505058224,
+    "dropout_meta": 0.39840661269897426
+  },
+  "best_val_f1": 0.32204755465404555,
+  "best_test_f1": 0.24230778283032697,
+  "search_space": {
+    "d_model": [
+      32,
+      64,
+      128
+    ],
+    "num_layers": [
+      1,
+      2
+    ],
+    "lr": [
+      0.0001,
+      0.01
+    ],
+    "dropout_encoder": [
+      0.1,
+      0.7
+    ],
+    "dropout_head": [
+      0.0,
+      0.5
+    ],
+    "dropout_input": [
+      0.0,
+      0.4
+    ],
+    "dropout_meta": [
+      0.0,
+      0.4
+    ]
+  },
+  "fixed_hparams": {
+    "nhead": 4,
+    "epochs": 100,
+    "patience": 15,
+    "weight_decay": 0.0001,
+    "label_smoothing": 0.0
+  },
+  "all_trials": [
+    {
+      "trial_id": 13,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.00012430376275638258,
+        "dropout_encoder": 0.38068599163410605,
+        "dropout_head": 0.2681623887839076,
+        "dropout_input": 0.23130480505058224,
+        "dropout_meta": 0.39840661269897426
+      },
+      "val_macro_f1": 0.32204755465404555,
+      "test_macro_f1": 0.24230778283032697,
+      "best_val_epoch": 20,
+      "stopped_epoch": 20
+    },
+    {
+      "trial_id": 17,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.0004827103772259829,
+        "dropout_encoder": 0.5023270855629319,
+        "dropout_head": 0.17629689691126058,
+        "dropout_input": 0.127949029438755,
+        "dropout_meta": 0.3113434788673813
+      },
+      "val_macro_f1": 0.3043822242172596,
+      "test_macro_f1": 0.2918981239784037,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 28,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.00017755858186849826,
+        "dropout_encoder": 0.34915353237329666,
+        "dropout_head": 0.2153508499244647,
+        "dropout_input": 0.2864932256799045,
+        "dropout_meta": 0.2999532412141439
+      },
+      "val_macro_f1": 0.30062334306520355,
+      "test_macro_f1": 0.21253320567059136,
+      "best_val_epoch": 20,
+      "stopped_epoch": 20
+    },
+    {
+      "trial_id": 34,
+      "params": {
+        "d_model": 128,
+        "num_layers": 2,
+        "lr": 0.0003906259416238876,
+        "dropout_encoder": 0.34135792085,
+        "dropout_head": 0.22009851131129898,
+        "dropout_input": 0.2829321746966103,
+        "dropout_meta": 0.335147939943525
+      },
+      "val_macro_f1": 0.2917246937459703,
+      "test_macro_f1": 0.2638569095107056,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 6,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.00012315571723666037,
+        "dropout_encoder": 0.2951981984579586,
+        "dropout_head": 0.194338644844741,
+        "dropout_input": 0.10853961270955836,
+        "dropout_meta": 0.3314950036607718
+      },
+      "val_macro_f1": 0.2908182918776139,
+      "test_macro_f1": 0.23225264780815735,
+      "best_val_epoch": 20,
+      "stopped_epoch": 20
+    },
+    {
+      "trial_id": 32,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.00019504545141579464,
+        "dropout_encoder": 0.2984622948620582,
+        "dropout_head": 0.17388904728039323,
+        "dropout_input": 0.13621306638253886,
+        "dropout_meta": 0.37700109034895635
+      },
+      "val_macro_f1": 0.28412035889100107,
+      "test_macro_f1": 0.2331664052134318,
+      "best_val_epoch": 17,
+      "stopped_epoch": 17
+    },
+    {
+      "trial_id": 51,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.00018162515061154562,
+        "dropout_encoder": 0.27438605567773583,
+        "dropout_head": 0.16511956063057065,
+        "dropout_input": 0.13158259008287798,
+        "dropout_meta": 0.37957044318756805
+      },
+      "val_macro_f1": 0.2834569184375565,
+      "test_macro_f1": 0.29363151156429784,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 0,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.0002051338263087451,
+        "dropout_encoder": 0.1935967122017216,
+        "dropout_head": 0.02904180608409973,
+        "dropout_input": 0.3464704583099741,
+        "dropout_meta": 0.24044600469728353
+      },
+      "val_macro_f1": 0.28179526494279494,
+      "test_macro_f1": 0.2513670883480706,
+      "best_val_epoch": 20,
+      "stopped_epoch": 20
+    },
+    {
+      "trial_id": 54,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.00014306225386504518,
+        "dropout_encoder": 0.3128883623213793,
+        "dropout_head": 0.13272651694688775,
+        "dropout_input": 0.027266710689832024,
+        "dropout_meta": 0.33737072386927935
+      },
+      "val_macro_f1": 0.2769623071347209,
+      "test_macro_f1": 0.2618767910161426,
+      "best_val_epoch": 23,
+      "stopped_epoch": 23
+    },
+    {
+      "trial_id": 29,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0002452510912989698,
+        "dropout_encoder": 0.35775178244507483,
+        "dropout_head": 0.26607076314179634,
+        "dropout_input": 0.29472925362347224,
+        "dropout_meta": 0.23433005944265833
+      },
+      "val_macro_f1": 0.27561816332009137,
+      "test_macro_f1": 0.2169294962124358,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 25,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.00012929800325087358,
+        "dropout_encoder": 0.6174885395083425,
+        "dropout_head": 0.311809145541008,
+        "dropout_input": 0.23150562836886543,
+        "dropout_meta": 0.39770364835075744
+      },
+      "val_macro_f1": 0.27216191768430575,
+      "test_macro_f1": 0.23561072492552132,
+      "best_val_epoch": 26,
+      "stopped_epoch": 26
+    },
+    {
+      "trial_id": 58,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.00033287462301387214,
+        "dropout_encoder": 0.3742766800269841,
+        "dropout_head": 0.2705452279854299,
+        "dropout_input": 0.06371126712760214,
+        "dropout_meta": 0.31695099061073573
+      },
+      "val_macro_f1": 0.2714784411766636,
+      "test_macro_f1": 0.22443514141072912,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 18,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.0018140837457893864,
+        "dropout_encoder": 0.5130922559283018,
+        "dropout_head": 0.2723953427232373,
+        "dropout_input": 0.15550767791455447,
+        "dropout_meta": 0.2976619776040315
+      },
+      "val_macro_f1": 0.27141220303049196,
+      "test_macro_f1": 0.2496789450636357,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 45,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.00021271247622241382,
+        "dropout_encoder": 0.181570819635616,
+        "dropout_head": 0.3377909695422885,
+        "dropout_input": 0.16001306767458856,
+        "dropout_meta": 0.3298556945591113
+      },
+      "val_macro_f1": 0.2694452321068051,
+      "test_macro_f1": 0.26249832475208157,
+      "best_val_epoch": 21,
+      "stopped_epoch": 21
+    },
+    {
+      "trial_id": 19,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0005090969973896876,
+        "dropout_encoder": 0.6109104317140344,
+        "dropout_head": 0.40827817041851533,
+        "dropout_input": 0.2604035330355403,
+        "dropout_meta": 0.3697573416587707
+      },
+      "val_macro_f1": 0.26920818648492933,
+      "test_macro_f1": 0.18439987327719826,
+      "best_val_epoch": 17,
+      "stopped_epoch": 17
+    },
+    {
+      "trial_id": 41,
+      "params": {
+        "d_model": 128,
+        "num_layers": 2,
+        "lr": 0.00016680500598653238,
+        "dropout_encoder": 0.2927825222681486,
+        "dropout_head": 0.19412014871798602,
+        "dropout_input": 0.18306930312265393,
+        "dropout_meta": 0.3349874299547535
+      },
+      "val_macro_f1": 0.26523750181324257,
+      "test_macro_f1": 0.23403892109522464,
+      "best_val_epoch": 17,
+      "stopped_epoch": 17
+    },
+    {
+      "trial_id": 27,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.0006619024268572931,
+        "dropout_encoder": 0.26227191986938053,
+        "dropout_head": 0.15723809789067367,
+        "dropout_input": 0.006074288726172744,
+        "dropout_meta": 0.15007374307175278
+      },
+      "val_macro_f1": 0.26436342252278744,
+      "test_macro_f1": 0.2048831256752049,
+      "best_val_epoch": 32,
+      "stopped_epoch": 32
+    },
+    {
+      "trial_id": 30,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.00018026733879496277,
+        "dropout_encoder": 0.5878949174181576,
+        "dropout_head": 0.3478684057508009,
+        "dropout_input": 0.2732163479071122,
+        "dropout_meta": 0.27809131426103423
+      },
+      "val_macro_f1": 0.26371213639486946,
+      "test_macro_f1": 0.24407114946271574,
+      "best_val_epoch": 18,
+      "stopped_epoch": 18
+    },
+    {
+      "trial_id": 24,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.0005883653660582773,
+        "dropout_encoder": 0.32505849654293684,
+        "dropout_head": 0.2508657504993096,
+        "dropout_input": 0.17198982356654216,
+        "dropout_meta": 0.3576152531996807
+      },
+      "val_macro_f1": 0.26319352313106026,
+      "test_macro_f1": 0.21815488565488567,
+      "best_val_epoch": 19,
+      "stopped_epoch": 19
+    },
+    {
+      "trial_id": 33,
+      "params": {
+        "d_model": 128,
+        "num_layers": 2,
+        "lr": 0.00030089668225756906,
+        "dropout_encoder": 0.4294915904679561,
+        "dropout_head": 0.12718006971209228,
+        "dropout_input": 0.32594698849560505,
+        "dropout_meta": 0.2574814458456132
+      },
+      "val_macro_f1": 0.26107076163510634,
+      "test_macro_f1": 0.25941030301401674,
+      "best_val_epoch": 26,
+      "stopped_epoch": 26
+    },
+    {
+      "trial_id": 50,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.0004307950892414153,
+        "dropout_encoder": 0.34569067311702556,
+        "dropout_head": 0.31329783872010597,
+        "dropout_input": 0.36937826256133083,
+        "dropout_meta": 0.005920252257012482
+      },
+      "val_macro_f1": 0.2609848484848485,
+      "test_macro_f1": 0.2500708389165775,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 2,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.0003839629299804173,
+        "dropout_encoder": 0.31981710597621504,
+        "dropout_head": 0.22803499210851796,
+        "dropout_input": 0.3140703845572055,
+        "dropout_meta": 0.0798695128633439
+      },
+      "val_macro_f1": 0.2589590671808891,
+      "test_macro_f1": 0.2278981597573594,
+      "best_val_epoch": 19,
+      "stopped_epoch": 19
+    },
+    {
+      "trial_id": 5,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.00023426581058204064,
+        "dropout_encoder": 0.6817507766587351,
+        "dropout_head": 0.3875664116805573,
+        "dropout_input": 0.37579957662567565,
+        "dropout_meta": 0.35793094017105953
+      },
+      "val_macro_f1": 0.2573016517590445,
+      "test_macro_f1": 0.2617278119687462,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 46,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.00012512305458468238,
+        "dropout_encoder": 0.3252725686675295,
+        "dropout_head": 0.23594606799111723,
+        "dropout_input": 0.26352401989651913,
+        "dropout_meta": 0.288477813651837
+      },
+      "val_macro_f1": 0.25656525151866766,
+      "test_macro_f1": 0.24207120843629099,
+      "best_val_epoch": 19,
+      "stopped_epoch": 19
+    },
+    {
+      "trial_id": 15,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.008524636948952195,
+        "dropout_encoder": 0.5537022951057458,
+        "dropout_head": 0.23285036226297773,
+        "dropout_input": 0.12745996083556474,
+        "dropout_meta": 0.38888502438333056
+      },
+      "val_macro_f1": 0.2563295361156669,
+      "test_macro_f1": 0.1878085413561848,
+      "best_val_epoch": 21,
+      "stopped_epoch": 21
+    },
+    {
+      "trial_id": 11,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.00010191956312899768,
+        "dropout_encoder": 0.2684565725438225,
+        "dropout_head": 0.003467290506267307,
+        "dropout_input": 0.18931727740904591,
+        "dropout_meta": 0.23960078667805235
+      },
+      "val_macro_f1": 0.25365619078752216,
+      "test_macro_f1": 0.2497959445997622,
+      "best_val_epoch": 20,
+      "stopped_epoch": 20
+    },
+    {
+      "trial_id": 40,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0002418542894541482,
+        "dropout_encoder": 0.4422357188182911,
+        "dropout_head": 0.43358469813412603,
+        "dropout_input": 0.2831815758600559,
+        "dropout_meta": 0.22791077094236423
+      },
+      "val_macro_f1": 0.25349584278155707,
+      "test_macro_f1": 0.16161742630850578,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 42,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.00011134338981406214,
+        "dropout_encoder": 0.23010275871091157,
+        "dropout_head": 0.2192035880284924,
+        "dropout_input": 0.23636229122359853,
+        "dropout_meta": 0.3535056054387489
+      },
+      "val_macro_f1": 0.25256821949725927,
+      "test_macro_f1": 0.21136832465844663,
+      "best_val_epoch": 21,
+      "stopped_epoch": 21
+    },
+    {
+      "trial_id": 47,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.0008022292180483575,
+        "dropout_encoder": 0.37186454075431047,
+        "dropout_head": 0.2899825349517524,
+        "dropout_input": 0.07034046271328859,
+        "dropout_meta": 0.251807244579173
+      },
+      "val_macro_f1": 0.25245022774962894,
+      "test_macro_f1": 0.23409695299164363,
+      "best_val_epoch": 22,
+      "stopped_epoch": 22
+    },
+    {
+      "trial_id": 3,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.00021930485556643703,
+        "dropout_encoder": 0.1390309557911677,
+        "dropout_head": 0.4744427686266666,
+        "dropout_input": 0.38625281322982374,
+        "dropout_meta": 0.3233589392465845
+      },
+      "val_macro_f1": 0.25155809548978153,
+      "test_macro_f1": 0.273783095581684,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 48,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.0002557066595733625,
+        "dropout_encoder": 0.4086263664623169,
+        "dropout_head": 0.196264393512952,
+        "dropout_input": 0.19275102332374527,
+        "dropout_meta": 0.386562828706396
+      },
+      "val_macro_f1": 0.2506701794822079,
+      "test_macro_f1": 0.2716655842288253,
+      "best_val_epoch": 17,
+      "stopped_epoch": 17
+    },
+    {
+      "trial_id": 23,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.00014302106510036605,
+        "dropout_encoder": 0.4806089059329391,
+        "dropout_head": 0.14954631327402088,
+        "dropout_input": 0.05550797577223951,
+        "dropout_meta": 0.26445430426974403
+      },
+      "val_macro_f1": 0.24919333246159686,
+      "test_macro_f1": 0.25288068888663384,
+      "best_val_epoch": 24,
+      "stopped_epoch": 24
+    },
+    {
+      "trial_id": 14,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.00010159732912288297,
+        "dropout_encoder": 0.4234153440387446,
+        "dropout_head": 0.2942966166016654,
+        "dropout_input": 0.22219676206571204,
+        "dropout_meta": 0.39900466084822567
+      },
+      "val_macro_f1": 0.2489206739206739,
+      "test_macro_f1": 0.22280304893041555,
+      "best_val_epoch": 34,
+      "stopped_epoch": 34
+    },
+    {
+      "trial_id": 38,
+      "params": {
+        "d_model": 128,
+        "num_layers": 2,
+        "lr": 0.0012985434376186857,
+        "dropout_encoder": 0.18447350594355055,
+        "dropout_head": 0.2879848787159414,
+        "dropout_input": 0.24421457921254947,
+        "dropout_meta": 0.34618993173349244
+      },
+      "val_macro_f1": 0.24426676203002723,
+      "test_macro_f1": 0.1734737680275425,
+      "best_val_epoch": 23,
+      "stopped_epoch": 23
+    },
+    {
+      "trial_id": 22,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.000351424370998643,
+        "dropout_encoder": 0.2474937545179771,
+        "dropout_head": 0.1989032007377598,
+        "dropout_input": 0.15189726873212256,
+        "dropout_meta": 0.3155212629014801
+      },
+      "val_macro_f1": 0.2439523850178678,
+      "test_macro_f1": 0.25224451966473244,
+      "best_val_epoch": 22,
+      "stopped_epoch": 22
+    },
+    {
+      "trial_id": 39,
+      "params": {
+        "d_model": 128,
+        "num_layers": 2,
+        "lr": 0.0005080198592787224,
+        "dropout_encoder": 0.33024388758187934,
+        "dropout_head": 0.25682227525035956,
+        "dropout_input": 0.3020530627027444,
+        "dropout_meta": 0.3191241401626423
+      },
+      "val_macro_f1": 0.24327919720076582,
+      "test_macro_f1": 0.23885229169655214,
+      "best_val_epoch": 18,
+      "stopped_epoch": 18
+    },
+    {
+      "trial_id": 21,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.0001494548128192247,
+        "dropout_encoder": 0.3776192842075596,
+        "dropout_head": 0.19203579776087926,
+        "dropout_input": 0.09252705411193707,
+        "dropout_meta": 0.32661410720421474
+      },
+      "val_macro_f1": 0.2410170174940205,
+      "test_macro_f1": 0.27668545400481176,
+      "best_val_epoch": 30,
+      "stopped_epoch": 30
+    },
+    {
+      "trial_id": 37,
+      "params": {
+        "d_model": 128,
+        "num_layers": 2,
+        "lr": 0.0002024084211135848,
+        "dropout_encoder": 0.48651624948844874,
+        "dropout_head": 0.21479995362645374,
+        "dropout_input": 0.39931343446640133,
+        "dropout_meta": 0.2906069244311686
+      },
+      "val_macro_f1": 0.23964490757532683,
+      "test_macro_f1": 0.20728449861774095,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 56,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.00020658350207349512,
+        "dropout_encoder": 0.3417626131102746,
+        "dropout_head": 0.10051468261351132,
+        "dropout_input": 0.17239177965300662,
+        "dropout_meta": 0.35228576253387034
+      },
+      "val_macro_f1": 0.23963949741746407,
+      "test_macro_f1": 0.19686998618454984,
+      "best_val_epoch": 44,
+      "stopped_epoch": 44
+    },
+    {
+      "trial_id": 1,
+      "params": {
+        "d_model": 128,
+        "num_layers": 2,
+        "lr": 0.00026587543983272726,
+        "dropout_encoder": 0.20909498032426038,
+        "dropout_head": 0.09170225492671691,
+        "dropout_input": 0.1216968971838151,
+        "dropout_meta": 0.20990257265289514
+      },
+      "val_macro_f1": 0.23853376962785372,
+      "test_macro_f1": 0.20301092464958012,
+      "best_val_epoch": 33,
+      "stopped_epoch": 33
+    },
+    {
+      "trial_id": 31,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.00012342341075939942,
+        "dropout_encoder": 0.21465182248812936,
+        "dropout_head": 0.2164645312512172,
+        "dropout_input": 0.21625976480931264,
+        "dropout_meta": 0.3078179838407721
+      },
+      "val_macro_f1": 0.23777114218290687,
+      "test_macro_f1": 0.25803913650965016,
+      "best_val_epoch": 17,
+      "stopped_epoch": 17
+    },
+    {
+      "trial_id": 20,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.001605000187899343,
+        "dropout_encoder": 0.46453840705131255,
+        "dropout_head": 0.11884849383054877,
+        "dropout_input": 0.07944723730033496,
+        "dropout_meta": 0.16929909357969908
+      },
+      "val_macro_f1": 0.23531662031634099,
+      "test_macro_f1": 0.27402793394895497,
+      "best_val_epoch": 25,
+      "stopped_epoch": 25
+    },
+    {
+      "trial_id": 59,
+      "params": {
+        "d_model": 32,
+        "num_layers": 1,
+        "lr": 0.0004975628686075518,
+        "dropout_encoder": 0.29853633516045885,
+        "dropout_head": 0.07795757103395708,
+        "dropout_input": 0.3501535399701809,
+        "dropout_meta": 0.12454381969456527
+      },
+      "val_macro_f1": 0.23529669485048388,
+      "test_macro_f1": 0.22791149453647222,
+      "best_val_epoch": 19,
+      "stopped_epoch": 19
+    },
+    {
+      "trial_id": 44,
+      "params": {
+        "d_model": 32,
+        "num_layers": 1,
+        "lr": 0.00035792861163237434,
+        "dropout_encoder": 0.2846155137199042,
+        "dropout_head": 0.1110764363323917,
+        "dropout_input": 0.20852123577542045,
+        "dropout_meta": 0.30877118198575015
+      },
+      "val_macro_f1": 0.232565021088728,
+      "test_macro_f1": 0.2607855143120107,
+      "best_val_epoch": 18,
+      "stopped_epoch": 18
+    },
+    {
+      "trial_id": 43,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.00015280840681013234,
+        "dropout_encoder": 0.3944687290055223,
+        "dropout_head": 0.16840424877449522,
+        "dropout_input": 0.10365431351218778,
+        "dropout_meta": 0.3768031908274271
+      },
+      "val_macro_f1": 0.23126532637359654,
+      "test_macro_f1": 0.24019468983444509,
+      "best_val_epoch": 19,
+      "stopped_epoch": 19
+    },
+    {
+      "trial_id": 4,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.00017541893487450815,
+        "dropout_encoder": 0.3971061460667621,
+        "dropout_head": 0.017194260557609198,
+        "dropout_input": 0.3637281608315128,
+        "dropout_meta": 0.10351199264000677
+      },
+      "val_macro_f1": 0.23067798041202295,
+      "test_macro_f1": 0.2355609172184192,
+      "best_val_epoch": 25,
+      "stopped_epoch": 25
+    },
+    {
+      "trial_id": 8,
+      "params": {
+        "d_model": 64,
+        "num_layers": 2,
+        "lr": 0.0034877126245459306,
+        "dropout_encoder": 0.14442679104045422,
+        "dropout_head": 0.1792328642721363,
+        "dropout_input": 0.04634762381005189,
+        "dropout_meta": 0.34524137035023744
+      },
+      "val_macro_f1": 0.23019249480130494,
+      "test_macro_f1": 0.23085046149722768,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 35,
+      "params": {
+        "d_model": 128,
+        "num_layers": 2,
+        "lr": 0.0004018978638678955,
+        "dropout_encoder": 0.3531798232939751,
+        "dropout_head": 0.24248291748219558,
+        "dropout_input": 0.2792500137445871,
+        "dropout_meta": 0.2108152821488483
+      },
+      "val_macro_f1": 0.22916179262875935,
+      "test_macro_f1": 0.2268968186936937,
+      "best_val_epoch": 19,
+      "stopped_epoch": 19
+    },
+    {
+      "trial_id": 12,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.0008932681364423789,
+        "dropout_encoder": 0.45501018155803585,
+        "dropout_head": 0.09084512955987814,
+        "dropout_input": 0.0041740385881847,
+        "dropout_meta": 0.27088685215111097
+      },
+      "val_macro_f1": 0.2276196387219594,
+      "test_macro_f1": 0.2542089395684825,
+      "best_val_epoch": 20,
+      "stopped_epoch": 20
+    },
+    {
+      "trial_id": 9,
+      "params": {
+        "d_model": 32,
+        "num_layers": 1,
+        "lr": 0.0004470608546778491,
+        "dropout_encoder": 0.5377637070028385,
+        "dropout_head": 0.31877873567760656,
+        "dropout_input": 0.3548850970305306,
+        "dropout_meta": 0.18888597006477972
+      },
+      "val_macro_f1": 0.22668937790083704,
+      "test_macro_f1": 0.17441496320982758,
+      "best_val_epoch": 19,
+      "stopped_epoch": 19
+    },
+    {
+      "trial_id": 16,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0008028836717487811,
+        "dropout_encoder": 0.35535367861829736,
+        "dropout_head": 0.35610363459357997,
+        "dropout_input": 0.2532458453288179,
+        "dropout_meta": 0.004395675697508483
+      },
+      "val_macro_f1": 0.21995733734864167,
+      "test_macro_f1": 0.19413796080462747,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 26,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.0003029810889904898,
+        "dropout_encoder": 0.42166536075387384,
+        "dropout_head": 0.06608413857851267,
+        "dropout_input": 0.11262126529734617,
+        "dropout_meta": 0.3414554418925345
+      },
+      "val_macro_f1": 0.21728830779925667,
+      "test_macro_f1": 0.20518286403992744,
+      "best_val_epoch": 23,
+      "stopped_epoch": 23
+    },
+    {
+      "trial_id": 55,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.009704304257330917,
+        "dropout_encoder": 0.6966927252429851,
+        "dropout_head": 0.175560277677173,
+        "dropout_input": 0.11596096649638309,
+        "dropout_meta": 0.3038091275190651
+      },
+      "val_macro_f1": 0.21591183574879225,
+      "test_macro_f1": 0.1861924030879719,
+      "best_val_epoch": 22,
+      "stopped_epoch": 22
+    },
+    {
+      "trial_id": 49,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0023653061993678904,
+        "dropout_encoder": 0.10087000707565219,
+        "dropout_head": 0.15097891421353565,
+        "dropout_input": 0.32122061782334577,
+        "dropout_meta": 0.3596323451844137
+      },
+      "val_macro_f1": 0.2153643766352118,
+      "test_macro_f1": 0.27215321764831574,
+      "best_val_epoch": 20,
+      "stopped_epoch": 20
+    },
+    {
+      "trial_id": 52,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.0001837201765967728,
+        "dropout_encoder": 0.30469415439347514,
+        "dropout_head": 0.18204462993510376,
+        "dropout_input": 0.1391068072135082,
+        "dropout_meta": 0.3988053598455229
+      },
+      "val_macro_f1": 0.20927840036750928,
+      "test_macro_f1": 0.2175400554707909,
+      "best_val_epoch": 18,
+      "stopped_epoch": 18
+    },
+    {
+      "trial_id": 57,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.0006605927381930823,
+        "dropout_encoder": 0.5163282480536622,
+        "dropout_head": 0.23570874317086396,
+        "dropout_input": 0.1437619037648896,
+        "dropout_meta": 0.281826316575431
+      },
+      "val_macro_f1": 0.20817307692307693,
+      "test_macro_f1": 0.18616472012533827,
+      "best_val_epoch": 17,
+      "stopped_epoch": 17
+    },
+    {
+      "trial_id": 7,
+      "params": {
+        "d_model": 128,
+        "num_layers": 1,
+        "lr": 0.0040215545266902904,
+        "dropout_encoder": 0.1447303862078625,
+        "dropout_head": 0.49344346830025865,
+        "dropout_input": 0.308897907718663,
+        "dropout_meta": 0.07948627261366897
+      },
+      "val_macro_f1": 0.2067924098239216,
+      "test_macro_f1": 0.20655824829931974,
+      "best_val_epoch": 19,
+      "stopped_epoch": 19
+    },
+    {
+      "trial_id": 10,
+      "params": {
+        "d_model": 64,
+        "num_layers": 1,
+        "lr": 0.0010866115799955207,
+        "dropout_encoder": 0.3081105348439731,
+        "dropout_head": 0.14399840634845307,
+        "dropout_input": 0.20023674054770008,
+        "dropout_meta": 0.29214675808280377
+      },
+      "val_macro_f1": 0.20513246868418133,
+      "test_macro_f1": 0.1762137354662754,
+      "best_val_epoch": 26,
+      "stopped_epoch": 26
+    },
+    {
+      "trial_id": 36,
+      "params": {
+        "d_model": 128,
+        "num_layers": 2,
+        "lr": 0.0002950753804281542,
+        "dropout_encoder": 0.39014828783355376,
+        "dropout_head": 0.0585805819406473,
+        "dropout_input": 0.3372775802925592,
+        "dropout_meta": 0.3687032696086351
+      },
+      "val_macro_f1": 0.1990995922681969,
+      "test_macro_f1": 0.25719539426071814,
+      "best_val_epoch": 16,
+      "stopped_epoch": 16
+    },
+    {
+      "trial_id": 53,
+      "params": {
+        "d_model": 32,
+        "num_layers": 2,
+        "lr": 0.00010825209103367006,
+        "dropout_encoder": 0.25338686125661924,
+        "dropout_head": 0.2087106088336526,
+        "dropout_input": 0.09583491647401385,
+        "dropout_meta": 0.36849932266846586
+      },
+      "val_macro_f1": 0.1933313327118637,
+      "test_macro_f1": 0.2502127110017169,
+      "best_val_epoch": 20,
+      "stopped_epoch": 20
+    }
+  ]
+}
