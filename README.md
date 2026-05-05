@@ -65,6 +65,11 @@ utils/
 ├── generate_spectrograms.py   # Generates and caches 128-bin log-mel spectrograms as PNGs (n_fft=2048, hop=512, fmax=8kHz)
 └── make_presentation_figures.py # Generates all 5 presentation figures (complexity scatter, heatmap, val-vs-test gap, INTER-by-lang, Optuna summary)
 
+results/
+├── canonical/          # 6 files  — JSON files for canonical hyperparameter tuning
+├── optuna/             # 14 files — JSON files for Optuna hyperparameter tuning
+└── supplementary/      # 1 file   — JSON files for LOCO 
+
 PROBLEMSETTING.md              # Original course problem brief (provided by instructors)
 README.md                      # This file
 requirements.txt               # Python dependencies (torch, librosa, scikit-learn, optuna, streamlit, etc.)
