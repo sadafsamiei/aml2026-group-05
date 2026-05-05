@@ -108,7 +108,7 @@ HPARAM_DEFAULTS = HPARAM_FULL
 # ---------------------------------------------------------------------------
 # Feature-type switches
 # ---------------------------------------------------------------------------
-USE_MFCC = True
+USE_MFCC = False
 
 # Pretrained audio embeddings (wav2vec2-base). When True, loads .npy files
 # from PRETRAINED_DIR and overrides F_DIM to 768 (wav2vec2 embedding dim).
