@@ -465,23 +465,39 @@ st.markdown(
 
 RESULTS = pd.DataFrame([
     {"model": "Model 1 (LR)",        "feature": "MFCC",     "params":   164,
-     "val_f1": 0.240, "test_f1": 0.253, "std": 0.000, "config": "C=10, balanced"},
+     "val_f1": 0.240, "test_f1": 0.253, "std": 0.000, "config": "Canonical grid: C=10, balanced"},
     {"model": "Model 1 (LR)",        "feature": "Mel",      "params":  1028,
-     "val_f1": 0.232, "test_f1": 0.277, "std": 0.000, "config": "C=0.01, balanced"},
+     "val_f1": 0.232, "test_f1": 0.277, "std": 0.000, "config": "Canonical grid: C=0.01, balanced"},
     {"model": "Model 1 (LR)",        "feature": "wav2vec2", "params":  6148,
-     "val_f1": 0.253, "test_f1": 0.263, "std": 0.000, "config": "C=0.01, balanced"},
-    {"model": "Model 2 (mean pool)", "feature": "MFCC",     "params": None,
-     "val_f1": 0.258, "test_f1": 0.238, "std": 0.039, "config": "d=64, L=2"},
+     "val_f1": 0.253, "test_f1": 0.263, "std": 0.000, "config": "Canonical grid: C=0.01, balanced"},
+    {"model": "Model 2 (mean pool)", "feature": "MFCC",     "params":  76_000,
+     "val_f1": 0.258, "test_f1": 0.222, "std": 0.033, "config": "Canonical: d=64, L=2"},
     {"model": "Model 2 (mean pool)", "feature": "Mel",      "params": 126_000,
-     "val_f1": 0.270, "test_f1": 0.249, "std": 0.020, "config": "d=64, L=2, drop=0.5"},
+     "val_f1": 0.270, "test_f1": 0.249, "std": 0.020, "config": "Canonical: d=64, L=2, drop=0.5"},
     {"model": "Model 2 (mean pool)", "feature": "wav2vec2", "params": 167_000,
-     "val_f1": 0.294, "test_f1": 0.219, "std": 0.018, "config": "d=64, L=2, drop=0.5"},
-    {"model": "Model 3 (attention)", "feature": "MFCC",     "params": None,
-     "val_f1": 0.257, "test_f1": 0.237, "std": 0.026, "config": "d=32, L=1"},
-    {"model": "Model 3 (attention)", "feature": "Mel",      "params": 26_000,
-     "val_f1": 0.252, "test_f1": 0.221, "std": 0.013, "config": "d=32, L=1, drop=0.3"},
+     "val_f1": 0.294, "test_f1": 0.219, "std": 0.018, "config": "Canonical: d=64, L=2, drop=0.5"},
+    {"model": "Model 3 (attention)", "feature": "MFCC",     "params":  26_000,
+     "val_f1": 0.257, "test_f1": 0.208, "std": 0.040, "config": "Canonical: d=32, L=1"},
+    {"model": "Model 3 (attention)", "feature": "Mel",      "params":  26_000,
+     "val_f1": 0.252, "test_f1": 0.221, "std": 0.013, "config": "Canonical: d=32, L=1, drop=0.3"},
     {"model": "Model 3 (attention)", "feature": "wav2vec2", "params": 648_000,
-     "val_f1": 0.286, "test_f1": 0.246, "std": 0.016, "config": "d=192, L=1, drop=0.3"},
+     "val_f1": 0.286, "test_f1": 0.246, "std": 0.016, "config": "Canonical: d=192, L=1, drop=0.3"},
+])
+RESULTS["variant"] = "Canonical"
+RESULTS["tuned"] = False
+RESULTS["delta"] = 0.0
+RESULTS["verdict"] = "Canonical baseline"
+
+OPTUNA_RESULTS = pd.DataFrame([
+    {"model": "Model 1 (LR)", "feature": "MFCC", "params": 164, "val_f1": 0.309, "test_f1": 0.239, "std": 0.000, "config": "Optuna C=0.01735", "variant": "Optuna", "tuned": True, "delta": -0.014, "verdict": "Loss vs canonical"},
+    {"model": "Model 1 (LR)", "feature": "Mel", "params": 1028, "val_f1": 0.231, "test_f1": 0.311, "std": 0.000, "config": "Optuna C=0.00492", "variant": "Optuna", "tuned": True, "delta": 0.034, "verdict": "Genuine gain"},
+    {"model": "Model 1 (LR)", "feature": "wav2vec2", "params": 6148, "val_f1": 0.263, "test_f1": 0.285, "std": 0.000, "config": "Optuna C=0.01498", "variant": "Optuna", "tuned": True, "delta": 0.022, "verdict": "Genuine gain"},
+    {"model": "Model 2 (mean pool)", "feature": "MFCC", "params": 76_000, "val_f1": 0.394, "test_f1": 0.219, "std": 0.029, "config": "Optuna d=128, L=1, lr=5.12e-3", "variant": "Optuna", "tuned": True, "delta": -0.003, "verdict": "Within seed noise"},
+    {"model": "Model 2 (mean pool)", "feature": "Mel", "params": 126_000, "val_f1": 0.336, "test_f1": 0.226, "std": 0.018, "config": "Optuna d=32, L=2, lr=1.83e-3", "variant": "Optuna", "tuned": True, "delta": -0.023, "verdict": "Loss / validation overfit"},
+    {"model": "Model 2 (mean pool)", "feature": "wav2vec2", "params": 333_000, "val_f1": 0.341, "test_f1": 0.251, "std": 0.020, "config": "Optuna d=128, L=1, lr=8.03e-4", "variant": "Optuna", "tuned": True, "delta": 0.032, "verdict": "Genuine gain"},
+    {"model": "Model 3 (attention)", "feature": "MFCC", "params": 76_000, "val_f1": 0.324, "test_f1": 0.217, "std": 0.038, "config": "Optuna d=32, L=2, lr=5.16e-4", "variant": "Optuna", "tuned": True, "delta": 0.009, "verdict": "Within seed noise"},
+    {"model": "Model 3 (attention)", "feature": "Mel", "params": 117_000, "val_f1": 0.322, "test_f1": 0.233, "std": 0.014, "config": "Optuna d=64, L=2, lr=1.24e-4", "variant": "Optuna", "tuned": True, "delta": 0.012, "verdict": "Within seed noise"},
+    {"model": "Model 3 (attention)", "feature": "wav2vec2", "params": 180_000, "val_f1": 0.332, "test_f1": 0.241, "std": 0.021, "config": "Optuna d=64, L=1, lr=1.69e-3", "variant": "Optuna", "tuned": True, "delta": -0.005, "verdict": "Within seed noise"},
 ])
 
 PERCLASS = {
@@ -666,138 +682,66 @@ with tab1:
 with tab2:
     st.markdown("### Model complexity vs test F1")
     st.markdown(
-        "Every dot is one (model, feature) pair from our 5-seed runs. "
+        "Every dot is one canonical or Optuna-selected (model, feature) result. "
         "The X axis is the parameter count on a log scale; the Y axis is test "
-        "macro-F1. **The smallest models are the best.**"
+        "macro-F1. **The strongest result is still the smallest mel model.**"
     )
 
     col_l, col_r = st.columns([1, 4])
     with col_l:
-        feat_filter = st.multiselect(
-            "Show feature sources",
-            ["MFCC", "Mel", "wav2vec2"],
-            default=["MFCC", "Mel", "wav2vec2"],
-        )
-        show_chance = st.checkbox("Show chance line",         value=True)
-        show_annot  = st.checkbox("Show point labels",        value=True)
-        show_err    = st.checkbox("Show seed std error bars", value=True)
+        feat_filter = st.multiselect("Show feature sources", ["MFCC", "Mel", "wav2vec2"], default=["MFCC", "Mel", "wav2vec2"])
+        variant_filter = st.multiselect("Show result type", ["Canonical", "Optuna"], default=["Canonical", "Optuna"])
+        show_chance = st.checkbox("Show chance line", value=True)
+        show_annot = st.checkbox("Show point labels", value=True)
+        show_err = st.checkbox("Show seed std error bars", value=True)
 
     with col_r:
-        df_show = RESULTS[RESULTS["feature"].isin(feat_filter)]
+        df_plot = pd.concat([RESULTS, OPTUNA_RESULTS], ignore_index=True)
+        df_show = df_plot[df_plot["feature"].isin(feat_filter) & df_plot["variant"].isin(variant_filter)].copy()
         df_show = df_show[df_show["params"].notna()].copy()
-
         symbols = {"MFCC": "square", "Mel": "circle", "wav2vec2": "triangle-up"}
-
         fig = go.Figure()
         for (model, feature), sub in df_show.groupby(["model", "feature"]):
             for _, row in sub.iterrows():
-                hover = (f"<b>{model} — {feature}</b><br>"
-                         f"Params: {int(row['params']):,}<br>"
-                         f"Val F1: {row['val_f1']:.3f}<br>"
-                         f"Test F1: {row['test_f1']:.3f} ± {row['std']:.3f}<br>"
-                         f"Config: {row['config']}")
+                tuned = bool(row.get("tuned", False))
+                point_color = "#EC4899" if tuned and row.get("verdict", "").startswith("Genuine") else "#A78BFA" if tuned and "Within" in row.get("verdict", "") else "#6B7280" if tuned else MODEL_COLORS[model]
+                hover = (f"<b>{model} — {feature}</b><br>Variant: {row.get('variant', 'Canonical')}<br>Params: {int(row['params']):,}<br>Val/select F1: {row['val_f1']:.3f}<br>Test F1: {row['test_f1']:.3f} ± {row['std']:.3f}<br>Delta vs canonical: {row.get('delta', 0):+.3f}<br>Verdict: {row.get('verdict', '—')}<br>Config: {row['config']}")
                 fig.add_trace(go.Scatter(
-                    x=[row["params"]], y=[row["test_f1"]],
-                    mode="markers+text" if show_annot else "markers",
-                    marker=dict(
-                        size=18, color=MODEL_COLORS[model],
-                        symbol=symbols[feature],
-                        line=dict(width=1.5, color=BG),
-                        opacity=0.95,
-                    ),
-                    text=[f"  {feature}"] if show_annot else None,
-                    textposition="middle right",
-                    textfont=dict(size=11, color=TEXT_MUTED),
-                    error_y=dict(
-                        type="data", array=[row["std"]],
-                        visible=show_err, color=MODEL_COLORS[model],
-                        thickness=1.5, width=4,
-                    ),
-                    name=f"{model} — {feature}",
-                    hovertemplate=hover + "<extra></extra>",
-                    showlegend=False,
+                    x=[row["params"]], y=[row["test_f1"]], mode="markers+text" if show_annot else "markers",
+                    marker=dict(size=28 if tuned else 18, color=point_color, symbol="star" if tuned else symbols[feature], line=dict(width=1.5, color=BG), opacity=0.98),
+                    text=[f"  {'Optuna ' if tuned else ''}{feature}"] if show_annot else None,
+                    textposition="middle right", textfont=dict(size=11, color=point_color if tuned else TEXT_MUTED),
+                    error_y=dict(type="data", array=[row["std"]], visible=show_err, color=point_color, thickness=1.5, width=4),
+                    name=f"{model} — {feature}", hovertemplate=hover + "<extra></extra>", showlegend=False,
                 ))
-
-        # Manual legend (one per model)
         for model, color in MODEL_COLORS.items():
-            fig.add_trace(go.Scatter(
-                x=[None], y=[None], mode="markers",
-                marker=dict(size=14, color=color, line=dict(width=1.5, color=BG)),
-                name=model, showlegend=True,
-            ))
-
+            fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", marker=dict(size=14, color=color, line=dict(width=1.5, color=BG)), name=model, showlegend=True))
+        for label, color in [("Optuna genuine gain", "#EC4899"), ("Optuna within noise", "#A78BFA"), ("Optuna loss", "#6B7280")]:
+            fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", marker=dict(size=16, color=color, symbol="star", line=dict(width=1.5, color=BG)), name=label, showlegend=True))
         if show_chance:
-            fig.add_hline(
-                y=CHANCE, line_dash="dash", line_color=TEXT_DIM,
-                line_width=1,
-                annotation_text=f"Chance = {CHANCE}",
-                annotation_position="bottom right",
-                annotation_font=dict(color=TEXT_MUTED, size=11),
-            )
-
-        fig.update_xaxes(
-            type="log",
-            title=dict(text="Model complexity [parameters, log scale]",
-                       font=dict(color=TEXT_MUTED, size=12)),
-        )
-        fig.update_yaxes(
-            title=dict(text="Test macro-F1", font=dict(color=TEXT_MUTED, size=12)),
-            range=[0.15, 0.32],
-        )
-        fig.update_layout(
-            height=480,
-            margin=dict(l=20, r=20, t=20, b=40),
-            legend=dict(orientation="h", y=1.05, x=0),
-        )
+            fig.add_hline(y=CHANCE, line_dash="dash", line_color=TEXT_DIM, line_width=1, annotation_text=f"Chance = {CHANCE}", annotation_position="bottom right", annotation_font=dict(color=TEXT_MUTED, size=11))
+        fig.update_xaxes(type="log", title=dict(text="Model complexity [parameters, log scale]", font=dict(color=TEXT_MUTED, size=12)))
+        fig.update_yaxes(title=dict(text="Test macro-F1", font=dict(color=TEXT_MUTED, size=12)), range=[0.15, 0.34])
+        fig.update_layout(height=520, margin=dict(l=20, r=20, t=20, b=40), legend=dict(orientation="h", y=1.12, x=0))
         st.plotly_chart(fig, width="stretch")
 
-    # Best result callout + numbers
     best = df_show.loc[df_show["test_f1"].idxmax()] if len(df_show) else None
     c1, c2, c3 = st.columns(3)
     if best is not None:
         with c1:
-            st.markdown(
-                f'<div class="metric-card">'
-                f'<div class="metric-num">{best["test_f1"]:.3f}</div>'
-                f'<div class="metric-lbl">Best test F1 in current view</div>'
-                f'<div class="metric-sub">{best["model"]} on {best["feature"]} '
-                f'<br><span style="color:{TEXT_DIM};">'
-                f'{int(best["params"]):,} params</span></div></div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown(f'<div class="metric-card"><div class="metric-num">{best["test_f1"]:.3f}</div><div class="metric-lbl">Best test F1 in current view</div><div class="metric-sub">{best["model"]} on {best["feature"]}<br><span style="color:{TEXT_DIM};">{int(best["params"]):,} params · {best.get("variant", "")}</span></div></div>', unsafe_allow_html=True)
         with c2:
-            st.markdown(
-                f'<div class="metric-card">'
-                f'<div class="metric-num">+{best["test_f1"] - CHANCE:.3f}</div>'
-                f'<div class="metric-lbl">Above uniform chance baseline</div>'
-                f'<div class="metric-sub">Theoretical chance = {CHANCE}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown(f'<div class="metric-card"><div class="metric-num">+{best["test_f1"] - CHANCE:.3f}</div><div class="metric-lbl">Above uniform chance baseline</div><div class="metric-sub">Chance = {CHANCE}; best verdict: {best.get("verdict", "—")}</div></div>', unsafe_allow_html=True)
         with c3:
-            n_above = (df_show["test_f1"] > CHANCE).sum()
-            st.markdown(
-                f'<div class="metric-card">'
-                f'<div class="metric-num">{n_above} / {len(df_show)}</div>'
-                f'<div class="metric-lbl">Configs above chance</div>'
-                f'<div class="metric-sub">Some transformer configs are at or '
-                f'below chance</div></div>',
-                unsafe_allow_html=True,
-            )
-
+            genuine = int((OPTUNA_RESULTS["verdict"] == "Genuine gain").sum())
+            st.markdown(f'<div class="metric-card"><div class="metric-num">{genuine} / 9</div><div class="metric-lbl">Genuine Optuna gains</div><div class="metric-sub">LR Mel and M2 wav2vec2 are the robust wins.</div></div>', unsafe_allow_html=True)
     with st.expander("📄 Full results table"):
-        df_table = RESULTS.copy()
-        df_table["params"] = df_table["params"].apply(
-            lambda x: f"{int(x):,}" if pd.notna(x) else "—"
-        )
-        df_table["test_f1"] = df_table.apply(
-            lambda r: f"{r['test_f1']:.3f} ± {r['std']:.3f}", axis=1
-        )
-        df_table["val_f1"]  = df_table["val_f1"].apply(lambda x: f"{x:.3f}")
-        st.dataframe(
-            df_table[["model", "feature", "params", "val_f1", "test_f1", "config"]],
-            hide_index=True, width="stretch",
-        )
+        df_table = pd.concat([RESULTS, OPTUNA_RESULTS], ignore_index=True).copy()
+        df_table["params"] = df_table["params"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "—")
+        df_table["test_f1"] = df_table.apply(lambda r: f"{r['test_f1']:.3f} ± {r['std']:.3f}", axis=1)
+        df_table["val_f1"] = df_table["val_f1"].apply(lambda x: f"{x:.3f}")
+        df_table["delta"] = df_table["delta"].apply(lambda x: f"{x:+.3f}")
+        st.dataframe(df_table[["variant", "model", "feature", "params", "val_f1", "test_f1", "delta", "verdict", "config"]], hide_index=True, width="stretch")
 
 # ===========================================================================
 # TAB 3 — Per-class Explorer

@@ -149,36 +149,20 @@ def load_grid(results_dir: Path, filename: str):
 
 
 # Canonical multi-seed JSONs used by the final dashboard/report.
-# Transformer MFCC exact JSONs were not recoverable from RES_DIR/results, so those
-# two rows are supplied as final-report overrides below.
+# All canonical rows are now JSON-backed, including the two transformer-MFCC rows.
 CANONICAL_MULTISEED = {
     ("Model 1 (LR)",        "MFCC"):     "lr_baseline_mfcc20_multiseed_20260424_105805.json",
     ("Model 1 (LR)",        "Mel"):      "lr_baseline_mel_multiseed_20260424_110530.json",
     ("Model 1 (LR)",        "wav2vec2"): "lr_baseline_wav2vec2_multiseed_20260424_112544.json",
+    ("Model 2 (mean pool)", "MFCC"):     "audio_multiseed_20260505_110345.json",
     ("Model 2 (mean pool)", "Mel"):      "audio_multiseed_20260416_230141.json",
     ("Model 2 (mean pool)", "wav2vec2"): "audio_multiseed_20260421_125550.json",
+    ("Model 3 (attention)", "MFCC"):     "attn_multiseed_20260505_114210.json",
     ("Model 3 (attention)", "Mel"):      "attn_multiseed_20260416_230142.json",
     ("Model 3 (attention)", "wav2vec2"): "attn_multiseed_20260422_192030.json",
 }
 
-MANUAL_MULTISEED_OVERRIDES = {
-    ("Model 2 (mean pool)", "MFCC"): {
-        "model": "AudioTransformer",
-        "feature": "MFCC",
-        "val_macro_f1": {"mean": 0.258, "std": 0.000},
-        "test_macro_f1": {"mean": 0.238, "std": 0.039},
-        "manual_override": True,
-        "source": "final report",
-    },
-    ("Model 3 (attention)", "MFCC"): {
-        "model": "AttentivePoolingTransformer",
-        "feature": "MFCC",
-        "val_macro_f1": {"mean": 0.257, "std": 0.000},
-        "test_macro_f1": {"mean": 0.237, "std": 0.026},
-        "manual_override": True,
-        "source": "final report",
-    },
-}
+MANUAL_MULTISEED_OVERRIDES = {}
 
 CANONICAL_RUN_ORDER = [
     ("Model 1 (LR)", "MFCC"),
@@ -1208,151 +1192,57 @@ def render_methodology_tab(
     # STAGE 3 — Hyperparameter tuning
     # =======================================================================
     stage_header(
-        3, "Hyperparameter tuning — Optuna best results",
-        "Optuna is the main tuning result. This section reports only the best tuned outcomes: LR improves strongly, Model 3 gains slightly, and Model 2 does not improve on test.",
+        3, "Hyperparameter tuning — Optuna across all 9 cells",
+        "Optuna is now reported across every model–feature combination. It produces two genuine gains and reveals that validation F1 is often an unreliable selector under the language-mismatched split.",
         ACCENT, SURFACE, SURFACE_2, BORDER_HI, TEXT, TEXT_MUTED,
     )
-
     st.markdown(
-        f'<div style="background:linear-gradient(135deg, {SURFACE} 0%, {SURFACE_2} 100%); '
-        f'border:1px solid #EC4899; border-left:4px solid #EC4899; '
-        f'border-radius:14px; padding:20px 24px; margin-bottom:22px;">'
-        f'<div style="color:#EC4899; font-size:11px; letter-spacing:0.12em; '
-        f'text-transform:uppercase; font-weight:700; margin-bottom:8px;">Optuna-first tuning summary</div>'
-        f'<div style="color:{TEXT}; font-size:15px; line-height:1.72;">'
-        f'The strongest tuning result is <strong>LR Mel + Optuna</strong>: continuous search over C finds '
-        f'<code>C=0.00492</code> and raises test macro-F1 to <strong>0.311</strong>. '
-        f'The transformer Optuna runs are still important: they show that broader Bayesian search does not close the gap to LR.'
-        f'</div></div>',
+        f'<div style="background:linear-gradient(135deg, {SURFACE} 0%, {SURFACE_2} 100%); border:1px solid #EC4899; border-left:4px solid #EC4899; border-radius:14px; padding:20px 24px; margin-bottom:22px;">'
+        f'<div style="color:#EC4899; font-size:11px; letter-spacing:0.12em; text-transform:uppercase; font-weight:700; margin-bottom:8px;">Optuna search interpretation</div>'
+        f'<div style="color:{TEXT}; font-size:15px; line-height:1.72;">Optuna was run on all 9 model–feature cells. The two genuine gains are <strong>LR Mel</strong> (<code>0.277 → 0.311</code>) and <strong>Model 2 wav2vec2</strong> (<code>0.219 → 0.251</code>). Everything else is within seed noise or degrades, so the conclusion is robust: the limiting factor is not simply a coarse grid.</div></div>',
         unsafe_allow_html=True,
     )
-
-    optuna_best = pd.DataFrame([
-        {
-            "Model": "LR Mel",
-            "Best test macro-F1": 0.311,
-            "Std": None,
-            "Search": "80-trial Optuna C search",
-            "Best hyperparameters": "C = 0.00492",
-            "Decision": "Best overall result; use Optuna LR.",
-            "Color": "#EC4899",
-        },
-        {
-            "Model": "M2 Mel",
-            "Best test macro-F1": 0.249,
-            "Std": 0.020,
-            "Search": "60-trial Optuna architecture/dropout search",
-            "Best hyperparameters": "Optuna best-val trial did not transfer to test",
-            "Decision": "No Optuna replacement; retained best M2 result.",
-            "Color": COLOR_M2,
-        },
-        {
-            "Model": "M3 Mel",
-            "Best test macro-F1": 0.233,
-            "Std": 0.014,
-            "Search": "60-trial Optuna architecture + metadata-dropout search",
-            "Best hyperparameters": "lr = 0.000124; tuned dropout/meta branch",
-            "Decision": "Small Optuna gain, still below LR.",
-            "Color": COLOR_M3,
-        },
+    optuna_cells = pd.DataFrame([
+        {"Model": "LR", "Feature": "MFCC", "Canonical": 0.253, "Optuna": 0.239, "Std": 0.000, "Delta": -0.014, "Trials": 80, "Selection": "inner LOPO-CV", "Best params": "C=0.01735", "Verdict": "Loss"},
+        {"Model": "LR", "Feature": "Mel", "Canonical": 0.277, "Optuna": 0.311, "Std": 0.000, "Delta": 0.034, "Trials": 80, "Selection": "inner LOPO-CV", "Best params": "C=0.00492", "Verdict": "Genuine gain"},
+        {"Model": "LR", "Feature": "wav2vec2", "Canonical": 0.263, "Optuna": 0.285, "Std": 0.000, "Delta": 0.022, "Trials": 80, "Selection": "inner LOPO-CV", "Best params": "C=0.01498", "Verdict": "Genuine gain"},
+        {"Model": "M2", "Feature": "MFCC", "Canonical": 0.222, "Optuna": 0.219, "Std": 0.029, "Delta": -0.003, "Trials": 60, "Selection": "validation F1", "Best params": "d=128, L=1, lr=5.12e-3", "Verdict": "Within seed noise"},
+        {"Model": "M2", "Feature": "Mel", "Canonical": 0.249, "Optuna": 0.226, "Std": 0.018, "Delta": -0.023, "Trials": 60, "Selection": "validation F1", "Best params": "d=32, L=2, lr=1.83e-3", "Verdict": "Loss / validation overfit"},
+        {"Model": "M2", "Feature": "wav2vec2", "Canonical": 0.219, "Optuna": 0.251, "Std": 0.020, "Delta": 0.032, "Trials": 60, "Selection": "validation F1", "Best params": "d=128, L=1, lr=8.03e-4", "Verdict": "Genuine gain"},
+        {"Model": "M3", "Feature": "MFCC", "Canonical": 0.208, "Optuna": 0.217, "Std": 0.038, "Delta": 0.009, "Trials": 60, "Selection": "validation F1", "Best params": "d=32, L=2, lr=5.16e-4", "Verdict": "Within seed noise"},
+        {"Model": "M3", "Feature": "Mel", "Canonical": 0.221, "Optuna": 0.233, "Std": 0.014, "Delta": 0.012, "Trials": 60, "Selection": "validation F1", "Best params": "d=64, L=2, lr=1.24e-4", "Verdict": "Within seed noise"},
+        {"Model": "M3", "Feature": "wav2vec2", "Canonical": 0.246, "Optuna": 0.241, "Std": 0.021, "Delta": -0.005, "Trials": 60, "Selection": "validation F1", "Best params": "d=64, L=1, lr=1.69e-3", "Verdict": "Within seed noise"},
     ])
-
-    st.markdown(
-        f'<div style="color:{ACCENT}; font-size:13px; font-weight:600; '
-        f'margin: 12px 0 12px 0; letter-spacing:0.04em;">'
-        f'BEST TUNED RESULTS</div>',
-        unsafe_allow_html=True,
-    )
-
-    col_plot, col_cards = st.columns([3, 2])
-    with col_plot:
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=optuna_best["Model"],
-            y=optuna_best["Best test macro-F1"],
-            marker=dict(
-                color=optuna_best["Color"],
-                line=dict(color="rgba(255,255,255,0.10)", width=1),
-            ),
-            text=[
-                f"{m:.3f}" if pd.isna(s) else f"{m:.3f} ± {s:.3f}"
-                for m, s in zip(optuna_best["Best test macro-F1"], optuna_best["Std"])
-            ],
-            textposition="outside",
-            textfont=dict(color=TEXT, size=12),
-            hovertemplate="%{x}<br>Best tuned test macro-F1: %{y:.3f}<extra></extra>",
-            showlegend=False,
-        ))
-        fig.add_hline(
-            y=0.250,
-            line_dash="dash",
-            line_color=TEXT_DIM,
-            line_width=1,
-            annotation_text="Chance ≈ 0.25",
-            annotation_position="bottom left",
-            annotation_font=dict(color=TEXT_MUTED, size=11),
-        )
-        fig.update_layout(
-            height=390,
-            margin=dict(l=10, r=10, t=35, b=35),
-            yaxis=dict(title="Test macro-F1", range=[0.19, 0.34]),
-            xaxis=dict(title=""),
-        )
-        st.plotly_chart(fig, width="stretch")
-
-    with col_cards:
-        for _, row in optuna_best.iterrows():
-            std_suffix = "" if pd.isna(row["Std"]) else f" ± {row['Std']:.3f}"
-            st.markdown(
-                f'<div style="background:{SURFACE}; border:1px solid {BORDER}; '
-                f'border-left:3px solid {row["Color"]}; border-radius:12px; '
-                f'padding:15px 18px; margin-bottom:12px;">'
-                f'<div style="color:{TEXT}; font-size:14px; font-weight:700; margin-bottom:6px;">{row["Model"]}</div>'
-                f'<div style="color:{row["Color"]}; font-size:20px; font-weight:800; '
-                f'font-family:JetBrains Mono,monospace; margin-bottom:8px;">'
-                f'{row["Best test macro-F1"]:.3f}{std_suffix}</div>'
-                f'<div style="color:{TEXT_MUTED}; font-size:12px; line-height:1.55; margin-bottom:8px;">{row["Search"]}</div>'
-                f'<div style="color:{TEXT}; font-size:12px; line-height:1.55; margin-bottom:6px;">{row["Best hyperparameters"]}</div>'
-                f'<div style="color:{TEXT_MUTED}; font-size:12px; line-height:1.55;">{row["Decision"]}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-    search_space = pd.DataFrame([
-        {
-            "Run": "LR Mel",
-            "Optuna trials": "80",
-            "Search target": "Regularisation strength C",
-            "Best outcome": "0.311 test macro-F1",
-        },
-        {
-            "Run": "M2 Mel",
-            "Optuna trials": "60",
-            "Search target": "d_model, layers, lr, dropout",
-            "Best outcome": "No test improvement over retained M2 result",
-        },
-        {
-            "Run": "M3 Mel",
-            "Optuna trials": "60",
-            "Search target": "Architecture, lr, dropout, dropout_meta",
-            "Best outcome": "0.233 ± 0.014 test macro-F1",
-        },
-    ])
-    st.dataframe(search_space, width="stretch", hide_index=True)
-
-    st.markdown(
-        f'<div style="color:{TEXT_DIM}; font-size:12px; line-height:1.65; margin-top:8px;">'
-        f'This section is intentionally Optuna-focused: it shows the tuned outcomes that drive the report conclusion.'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    optuna_cells["Color"] = optuna_cells["Verdict"].map({"Genuine gain": "#EC4899", "Within seed noise": "#A78BFA", "Loss": "#6B7280", "Loss / validation overfit": "#6B7280"}).fillna("#A78BFA")
+    c1, c2, c3 = st.columns(3)
+    for col, title, value, subtitle, detail, color in [
+        (c1, "Best overall", "0.311", "LR Mel + Optuna", "+0.034 over canonical; C=0.00492", "#EC4899"),
+        (c2, "Best transformer gain", "0.251", "M2 wav2vec2 + Optuna", "+0.032 over canonical; |∆|/σ≈1.6", COLOR_M2),
+        (c3, "Main caution", "7 / 9", "cells did not genuinely improve", "validation F1 is noisy under language mismatch", TEXT_MUTED),
+    ]:
+        with col:
+            st.markdown(f'<div style="background:{SURFACE}; border:1px solid {BORDER}; border-top:3px solid {color}; border-radius:12px; padding:18px 20px; height:150px;"><div style="color:{TEXT_MUTED}; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; font-weight:700; margin-bottom:8px;">{title}</div><div style="color:{color}; font-size:34px; font-weight:800; line-height:1; font-family:JetBrains Mono,monospace; margin-bottom:8px;">{value}</div><div style="color:{TEXT}; font-size:13px; font-weight:700; margin-bottom:6px;">{subtitle}</div><div style="color:{TEXT_MUTED}; font-size:12px; line-height:1.5;">{detail}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="color:{ACCENT}; font-size:13px; font-weight:600; margin: 24px 0 12px 0; letter-spacing:0.04em;">CANONICAL VS OPTUNA — ALL 9 MODEL–FEATURE CELLS</div>', unsafe_allow_html=True)
+    fig = go.Figure()
+    x_labels = [f'{r.Model}<br>{r.Feature}' for _, r in optuna_cells.iterrows()]
+    fig.add_trace(go.Bar(x=x_labels, y=optuna_cells["Canonical"], name="Canonical", marker=dict(color="rgba(156, 163, 175, 0.55)", line=dict(width=0)), hovertemplate="%{x}<br>Canonical F1: %{y:.3f}<extra></extra>"))
+    fig.add_trace(go.Bar(x=x_labels, y=optuna_cells["Optuna"], name="Optuna-selected / 5-seed", marker=dict(color=optuna_cells["Color"], line=dict(width=0)), text=[f'{v:+.3f}' for v in optuna_cells["Delta"]], textposition="outside", textfont=dict(color=TEXT, size=11), hovertemplate="%{x}<br>Optuna F1: %{y:.3f}<extra></extra>"))
+    fig.add_hline(y=0.250, line_dash="dash", line_color=TEXT_DIM, line_width=1, annotation_text="Chance ≈ 0.25", annotation_position="bottom right", annotation_font=dict(color=TEXT_MUTED, size=11))
+    fig.update_layout(barmode="group", height=470, margin=dict(l=10, r=10, t=30, b=80), yaxis=dict(title="Test macro-F1", range=[0.17, 0.34]), xaxis=dict(title=""), legend=dict(orientation="h", y=1.05, x=0))
+    st.plotly_chart(fig, width="stretch")
+    table = optuna_cells.copy()
+    table["Canonical"] = table["Canonical"].map(lambda x: f"{x:.3f}")
+    table["Optuna"] = table.apply(lambda r: f"{r['Optuna']:.3f} ± {r['Std']:.3f}" if r["Std"] else f"{r['Optuna']:.3f} ± 0.000", axis=1)
+    table["Delta"] = table["Delta"].map(lambda x: f"{x:+.3f}")
+    st.dataframe(table[["Model", "Feature", "Trials", "Selection", "Canonical", "Optuna", "Delta", "Best params", "Verdict"]], width="stretch", hide_index=True)
+    st.markdown(f'<div style="color:{TEXT_DIM}; font-size:12px; line-height:1.65; margin-top:10px;">Important: Optuna selection never uses the test set. LR is selected by inner LOPO-CV; transformers are selected by validation macro-F1 and then interpreted on the fixed Tagalog test child. The negative/within-noise outcomes are evidence that validation F1 is often a noisy selector under this cross-linguistic split.</div>', unsafe_allow_html=True)
 
     # STAGE 4 — Multi-seed canonical training
     # =======================================================================
     stage_header(
         4, "Multi-seed canonical training",
         "Final model configurations are evaluated with 5 random seeds where applicable. "
-        "The selector below uses the final JSONs when available and report values for the two missing transformer-MFCC rows.",
+        "The selector below is now fully JSON-backed, including the transformer-MFCC rows.",
         ACCENT, SURFACE, SURFACE_2, BORDER_HI, TEXT, TEXT_MUTED,
     )
 
