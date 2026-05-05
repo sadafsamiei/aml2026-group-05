@@ -16,7 +16,7 @@ We formulate the task as a **4-class supervised classification** problem.
 Each example is
 
 $$
-(x_i^{\text{audio}},\; x_i^{\text{meta}},\; y_i)
+(x_i^{\text{audio}},\ x_i^{\text{meta}},\ y_i)
 $$
 
 where $x_i^{\text{audio}}$ is an acoustic representation of the clip,
@@ -26,7 +26,7 @@ $y_i$ is the target context label.
 The label space is
 
 $$
-y_i \in \{\texttt{PLTOY},\; \texttt{MOVE},\; \texttt{INTER},\; \texttt{EXTEV}\}
+y_i \in \{\texttt{PLTOY},\ \texttt{MOVE},\ \texttt{INTER},\ \texttt{EXTEV}\}
 $$
 
 defined as follows:
@@ -39,7 +39,7 @@ defined as follows:
 The objective is to learn a classifier
 
 $$
-f_\theta(x_i^{\text{audio}},\; x_i^{\text{meta}}) = y_i
+f_\theta(x_i^{\text{audio}},\ x_i^{\text{meta}}) = y_i
 $$
 
 that generalises to an unseen participant speaking a language not seen at
