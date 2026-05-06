@@ -1,14 +1,22 @@
 """
-regenerate_optuna_figures_complete.py
+regenerate_optuna_figures.py
 -------------------------------------
-Regenerates the Optuna extension figures 
+Regenerates the Optuna extension figures and fills the three previously
+missing cells in the canonical-vs-Optuna chart from the added JSON files:
+
+  • M2 MFCC canonical: audio_canonical_multiseed_M2_MFCC.json
+  • M2 Mel Optuna:     audio_multiseed_optuna_M2_Mel.json (5-seed rerun; preferred)
+  • M3 MFCC canonical: attn_canonical_multiseed_M3_MFCC.json
 
 Usage
 -----
 From the project root:
 
-    python utils/regenerate_optuna_figures.py
+    python utils/regenerate_optuna_figures_complete.py
 
+or from the directory containing the JSON files:
+
+    python regenerate_optuna_figures_complete.py --data-dir .
 
 Outputs
 -------
@@ -16,6 +24,10 @@ Outputs
     <FIGURES_DIR>/presentation/fig8_optuna_summary.png
     <FIGURES_DIR>/presentation/fig9_canonical_vs_optuna.png
 
+The script reads the added JSONs when present, preferring the corrected
+M2 Mel Optuna 5-seed rerun JSON over the single-trial search JSON. It also
+keeps audited fallback values so the figures can still be regenerated if a
+JSON is absent.
 """
 
 from __future__ import annotations
@@ -114,7 +126,7 @@ OPTUNA_FALLBACK: dict[Cell, Result | None] = {
 
     # M2 — Optuna winners / reruns
     ("M2", "MFCC"):     Result(0.219, 0.029, 251_140, "d=128,L=1"),
-    ("M2", "Mel"):      None,  # filled from audio_optuna_M2_Mel.json
+    ("M2", "Mel"):      Result(0.226, 0.018, 251_140, "d=32,L=2"),  # overwritten by audio_multiseed_optuna_M2_Mel.json when present
     ("M2", "wav2vec2"): Result(0.251, 0.020, 333_060, "d=128,L=1"),
 
     # M3 — Optuna winners / reruns
@@ -207,8 +219,20 @@ def result_from_multiseed_json(path: Path, cell: Cell) -> Result:
 
 
 def result_from_optuna_json(path: Path, cell: Cell) -> Result:
+    """Read either a single-trial Optuna JSON or a 5-seed Optuna rerun JSON."""
     with path.open() as f:
         data = json.load(f)
+
+    # Corrected M2 Mel file is a multiseed rerun of the Optuna-selected config.
+    if isinstance(data.get("test_macro_f1"), dict):
+        test_mean, test_std = _metric_pair(data, "test_macro_f1")
+        val_mean, val_std = _metric_pair(data, "val_macro_f1")
+        hp = data.get("hparams", {}) or {}
+        d_model = hp.get("d_model")
+        num_layers = hp.get("num_layers")
+        label = f"d={d_model},L={num_layers}" if d_model is not None and num_layers is not None else "Optuna 5-seed"
+        return Result(test_mean=test_mean, test_std=test_std, n_params=PARAM_FALLBACK.get(cell),
+                      label=label, val_mean=val_mean, val_std=val_std)
 
     params = data.get("best_params", {}) or {}
     d_model = params.get("d_model")
@@ -220,7 +244,7 @@ def result_from_optuna_json(path: Path, cell: Cell) -> Result:
 
     return Result(
         test_mean=float(data["best_test_f1"]),
-        test_std=None,  # this JSON is a single Optuna best trial, not a multiseed rerun
+        test_std=None,
         n_params=PARAM_FALLBACK.get(cell),
         label=label,
         val_mean=float(data["best_val_f1"]),
@@ -244,7 +268,7 @@ def load_results(data_dir: Path | None = None) -> tuple[dict[Cell, Result | None
         canonical[("M3", "MFCC")] = result_from_multiseed_json(m3_mfcc_can, ("M3", "MFCC"))
         used["M3 MFCC canonical"] = m3_mfcc_can
 
-    m2_mel_opt = find_json("audio_optuna_M2_Mel.json", data_dir)
+    m2_mel_opt = find_json("audio_multiseed_optuna_M2_Mel.json", data_dir) or find_json("audio_optuna_M2_Mel.json", data_dir)
     if m2_mel_opt:
         optuna[("M2", "Mel")] = result_from_optuna_json(m2_mel_opt, ("M2", "Mel"))
         used["M2 Mel Optuna"] = m2_mel_opt
@@ -525,7 +549,7 @@ def fig9_canonical_vs_optuna_detailed(
     ax.set_xticklabels([label_for(k) for k in CELL_ORDER], fontsize=10)
     ax.set_ylabel("Test macro-F1", fontsize=11)
     ax.set_title("Canonical vs Optuna for every (model, feature) combination\n"
-                 "Includes M2 MFCC canonical, M2 Mel Optuna, and M3 MFCC canonical from added JSONs",
+                 "Includes M2 MFCC canonical, M2 Mel Optuna 5-seed, and M3 MFCC canonical from added JSONs",
                  fontsize=12)
     ax.set_ylim(0, 0.40)
 
