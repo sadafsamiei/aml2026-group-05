@@ -226,7 +226,7 @@ For the **Transformer models**, an 8-configuration grid per (model,
 feature) combination tunes:
 
 - $d_\text{model} \in \{32, 64\}$
-- $L \in \{1, 2\}$ (number of encoder layers)
+- $L \in \[1, 2\]$ (number of encoder layers)
 - dropout $\in \{0.3, 0.5\}$
 - learning rate: fixed at $10^{-3}$ for mel/MFCC and $5 \times 10^{-4}$
   for wav2vec2
