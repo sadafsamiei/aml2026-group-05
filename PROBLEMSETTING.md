@@ -84,7 +84,7 @@ disentangled from feature-engineering choices:
 
 2. **MFCC.** 20 Mel-frequency cepstral coefficients (n\_fft=2048,
    hop=512, 16 kHz). For Model 1, collapsed to a 40-dimensional summary
-   vector. For Models 2–3, used as a padded 20 × 230 sequence.
+   vector. For Models 2–3, used as a padded 128 × 230 sequence (coefficients zero-padded to F_DIM=128).
 
 3. **wav2vec2 embeddings.** Last-layer embeddings from a frozen,
    pretrained wav2vec2-base encoder (768 dimensions per frame), extracted
@@ -117,7 +117,7 @@ during training on mel and MFCC features only (2 frequency masks
 $F_\text{max}=27$, 2 time masks $T_\text{max}=70$); it is not applied to
 wav2vec2 embeddings, where masking would destroy learned phonetic content.
 Frame representations are combined via masked mean pooling before
-classification. The v2 architecture introduces four independent dropout
+classification. The v2 architecture introduces three independent dropout
 locations replacing the original single parameter: `dropout_encoder`
 (inside each sub-layer), `dropout_input` (after input projection), and
 `dropout_head` (after pooling, before classifier).
@@ -288,9 +288,9 @@ The specific contributions are:
    macro-F1, providing direct evidence that the Shipibo validation prior
    and the Tagalog test distribution are structurally mismatched.
 
-5. **Bayesian hyperparameter search yielding two genuine gains**: LR mel
-   ($0.277 \to 0.311$, $+0.034$) and Model 2 wav2vec2
-   ($0.219 \to 0.251$, $+0.032$), with the remaining seven combinations
+5. **Bayesian hyperparameter search yielding three genuine gains**: LR mel
+   ($0.277 \to 0.311$, $+0.034$), LR wav2vec2 ($0.263 \to 0.285$, $+0.022) and Model 2 wav2vec2
+   ($0.219 \to 0.251$, $+0.032$), with the remaining six combinations
    within seed noise of canonical or degraded — a pattern that correlates
    with the canonical val-test gap and confirms that tuning adds signal
    only when the selector criterion is reliable.
