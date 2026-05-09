@@ -54,7 +54,7 @@ scripts/
 src/
 ├── config.py                  # Paths, HPARAM_FULL hyperparameters, USE_PRETRAINED, METADATA_MODE flags
 ├── data_utils.py              # Dataset classes (Spectrogram, MetadataSpectrogram), splits loader, per-clip norm, SpecAugment
-├── models.py                  # AudioTransformer + AttentivePoolingTransformer (v2 with 4 dropout locations)
+├── models.py                  # AudioTransformer + AttentivePoolingTransformer (v2: 3 dropout locations for M2, 4 for M3)
 └── train_utils.py             # Training loop, evaluate(), early stopping, sanity checks (forward pass, NaN guards)
 
 utils/
@@ -70,7 +70,7 @@ results/
 ├── optuna/             # 14 files — JSON files for Optuna hyperparameter tuning
 └── supplementary/      # 1 file   — JSON files for LOCO 
 
-PROBLEMSETTING.md              # Original course problem brief (provided by instructors)
+PROBLEMSETTING.md              # Problem setting adapted from the course brief to reflect the actual project methodology
 README.md                      # This file
 requirements.txt               # Python dependencies (torch, librosa, scikit-learn, optuna, streamlit, etc.)
 project_report.pdf             # Final compiled 18-page report
@@ -181,7 +181,7 @@ Run Optuna for transformer models (runs both Models 2 and 3 sequentially, ~6 hou
 python experiments/optuna_search.py
 ```
 
-Optuna is the main hyperparameter-tuning extension. It improves LR mel from the canonical result to the best overall result.
+Optuna is the main hyperparameter-tuning extension. It yields three genuine gains: LR mel (0.277 → 0.311), LR wav2vec2 (0.263 → 0.285), and M2 wav2vec2 (0.219 → 0.251). All other combinations are within seed noise or degrade.
 
 ---
 

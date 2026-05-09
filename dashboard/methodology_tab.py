@@ -1193,7 +1193,7 @@ def render_methodology_tab(
     # =======================================================================
     stage_header(
         3, "Hyperparameter tuning — Optuna across all 9 cells",
-        "Optuna is now reported across every model–feature combination. It produces two genuine gains and reveals that validation F1 is often an unreliable selector under the language-mismatched split.",
+        "Optuna is now reported across every model–feature combination. It produces three genuine gains and reveals that validation F1 is often an unreliable selector under the language-mismatched split.",
         ACCENT, SURFACE, SURFACE_2, BORDER_HI, TEXT, TEXT_MUTED,
     )
     st.markdown(
