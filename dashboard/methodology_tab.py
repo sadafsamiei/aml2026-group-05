@@ -306,7 +306,7 @@ def info_card(title: str, body_html: str, accent: str,
 # ===========================================================================
 
 FEATURE_SHAPES = {
-    "MFCC": {"raw": "20 × T", "lr": "R40", "seq": "(B, T=230, F=20)"},
+    "MFCC": {"raw": "20 × T", "lr": "R40", "seq": "(B, T=230, F=128)"},
     "Mel": {"raw": "128 × 230", "lr": "R256", "seq": "(B, T=230, F=128)"},
     "wav2vec2": {"raw": "768 × T", "lr": "R1536", "seq": "(B, T, F=768)"},
 }
@@ -803,7 +803,7 @@ def render_methodology_tab(
         # Class distribution as a simple bar chart
         classes = ["EXTEV", "INTER", "MOVE", "PLTOY"]
         # Total counts across the full dataset (well-known from the README)
-        total_counts = {"EXTEV": 165, "INTER": 326, "MOVE": 178, "PLTOY": 340}
+        total_counts = {"EXTEV": 222, "INTER": 325, "MOVE": 222, "PLTOY": 240}
         total = sum(total_counts.values())
         fig = go.Figure()
         fig.add_trace(go.Bar(
@@ -883,7 +883,7 @@ def render_methodology_tab(
          "20 Mel-frequency cepstral coefficients computed via librosa.",
          "(20 × T)",
          "(40,) for LR — mean+std collapsed over time<br>"
-         "(20 × 230) for transformers — padded sequence",
+         "(128 × 230) for transformers — zero-padded to F_DIM=128",
          "On-the-fly per clip"),
         (c2, "Mel spectrogram", ACCENT,
          "128-bin mel spectrogram, log-scale.",
@@ -1028,15 +1028,15 @@ def render_methodology_tab(
             f'<span style="color:{TEXT_MUTED}; font-size:12px;">'
             f'Subtract per-clip mean, divide by per-clip std. Stabilises '
             f'training across clips with very different volumes.<br>'
-            f'<em>Mel only.</em> wav2vec2 features are pre-normalised by '
-            f'the encoder.'
+            f'<em>Mel and MFCC.</em> wav2vec2 features are pre-normalised by '
+            f'the wav2vec2 encoder and do not require it.'
             f'</span></li>'
 
             f'<li><strong>SpecAugment (training only)</strong> '
             f'<span style="color:{ACCENT}; font-size:11px;">[ablated ✓]</span><br>'
             f'<span style="color:{TEXT_MUTED}; font-size:12px;">'
             f'Random time-mask + frequency-mask. Data augmentation.<br>'
-            f'<em>Mel only.</em> Skipped on wav2vec2 to preserve phonetic content.'
+            f'<em>Mel and MFCC.</em> Skipped on wav2vec2 to preserve phonetic content.'
             f'</span></li>'
 
             f'<li><strong>Encoder forward pass</strong><br>'
@@ -1199,7 +1199,7 @@ def render_methodology_tab(
     st.markdown(
         f'<div style="background:linear-gradient(135deg, {SURFACE} 0%, {SURFACE_2} 100%); border:1px solid #EC4899; border-left:4px solid #EC4899; border-radius:14px; padding:20px 24px; margin-bottom:22px;">'
         f'<div style="color:#EC4899; font-size:11px; letter-spacing:0.12em; text-transform:uppercase; font-weight:700; margin-bottom:8px;">Optuna search interpretation</div>'
-        f'<div style="color:{TEXT}; font-size:15px; line-height:1.72;">Optuna was run on all 9 model–feature cells. The two genuine gains are <strong>LR Mel</strong> (<code>0.277 → 0.311</code>) and <strong>Model 2 wav2vec2</strong> (<code>0.219 → 0.251</code>). Everything else is within seed noise or degrades, so the conclusion is robust: the limiting factor is not simply a coarse grid.</div></div>',
+        f'<div style="color:{TEXT}; font-size:15px; line-height:1.72;">Optuna was run on all 9 model–feature cells. Three genuine gains: <strong>LR Mel</strong> (<code>0.277 → 0.311</code>), <strong>LR wav2vec2</strong> (<code>0.263 → 0.285</code>), and <strong>Model 2 wav2vec2</strong> (<code>0.219 → 0.251</code>). Everything else is within seed noise or degrades, so the conclusion is robust: the limiting factor is not simply a coarse grid.</div></div>',
         unsafe_allow_html=True,
     )
     optuna_cells = pd.DataFrame([
@@ -1218,7 +1218,7 @@ def render_methodology_tab(
     for col, title, value, subtitle, detail, color in [
         (c1, "Best overall", "0.311", "LR Mel + Optuna", "+0.034 over canonical; C=0.00492", "#EC4899"),
         (c2, "Best transformer gain", "0.251", "M2 wav2vec2 + Optuna", "+0.032 over canonical; |∆|/σ≈1.6", COLOR_M2),
-        (c3, "Main caution", "7 / 9", "cells did not genuinely improve", "validation F1 is noisy under language mismatch", TEXT_MUTED),
+        (c3, "Main caution", "6 / 9", "cells did not genuinely improve", "validation F1 is noisy under language mismatch", TEXT_MUTED),
     ]:
         with col:
             st.markdown(f'<div style="background:{SURFACE}; border:1px solid {BORDER}; border-top:3px solid {color}; border-radius:12px; padding:18px 20px; height:150px;"><div style="color:{TEXT_MUTED}; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; font-weight:700; margin-bottom:8px;">{title}</div><div style="color:{color}; font-size:34px; font-weight:800; line-height:1; font-family:JetBrains Mono,monospace; margin-bottom:8px;">{value}</div><div style="color:{TEXT}; font-size:13px; font-weight:700; margin-bottom:6px;">{subtitle}</div><div style="color:{TEXT_MUTED}; font-size:12px; line-height:1.5;">{detail}</div></div>', unsafe_allow_html=True)

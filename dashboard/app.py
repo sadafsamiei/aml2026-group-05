@@ -470,7 +470,7 @@ RESULTS = pd.DataFrame([
      "val_f1": 0.232, "test_f1": 0.277, "std": 0.000, "config": "Canonical grid: C=0.01, balanced"},
     {"model": "Model 1 (LR)",        "feature": "wav2vec2", "params":  6148,
      "val_f1": 0.253, "test_f1": 0.263, "std": 0.000, "config": "Canonical grid: C=0.01, balanced"},
-    {"model": "Model 2 (mean pool)", "feature": "MFCC",     "params":  76_000,
+    {"model": "Model 2 (mean pool)", "feature": "MFCC",     "params":  126_000,
      "val_f1": 0.258, "test_f1": 0.222, "std": 0.033, "config": "Canonical: d=64, L=2"},
     {"model": "Model 2 (mean pool)", "feature": "Mel",      "params": 126_000,
      "val_f1": 0.270, "test_f1": 0.249, "std": 0.020, "config": "Canonical: d=64, L=2, drop=0.5"},
@@ -492,10 +492,10 @@ OPTUNA_RESULTS = pd.DataFrame([
     {"model": "Model 1 (LR)", "feature": "MFCC", "params": 164, "val_f1": 0.309, "test_f1": 0.239, "std": 0.000, "config": "Optuna C=0.01735", "variant": "Optuna", "tuned": True, "delta": -0.014, "verdict": "Loss vs canonical"},
     {"model": "Model 1 (LR)", "feature": "Mel", "params": 1028, "val_f1": 0.231, "test_f1": 0.311, "std": 0.000, "config": "Optuna C=0.00492", "variant": "Optuna", "tuned": True, "delta": 0.034, "verdict": "Genuine gain"},
     {"model": "Model 1 (LR)", "feature": "wav2vec2", "params": 6148, "val_f1": 0.263, "test_f1": 0.285, "std": 0.000, "config": "Optuna C=0.01498", "variant": "Optuna", "tuned": True, "delta": 0.022, "verdict": "Genuine gain"},
-    {"model": "Model 2 (mean pool)", "feature": "MFCC", "params": 76_000, "val_f1": 0.394, "test_f1": 0.219, "std": 0.029, "config": "Optuna d=128, L=1, lr=5.12e-3", "variant": "Optuna", "tuned": True, "delta": -0.003, "verdict": "Within seed noise"},
+    {"model": "Model 2 (mean pool)", "feature": "MFCC", "params": 251_000, "val_f1": 0.394, "test_f1": 0.219, "std": 0.029, "config": "Optuna d=128, L=1, lr=5.12e-3", "variant": "Optuna", "tuned": True, "delta": -0.003, "verdict": "Within seed noise"},
     {"model": "Model 2 (mean pool)", "feature": "Mel", "params": 126_000, "val_f1": 0.336, "test_f1": 0.226, "std": 0.018, "config": "Optuna d=32, L=2, lr=1.83e-3", "variant": "Optuna", "tuned": True, "delta": -0.023, "verdict": "Loss / validation overfit"},
     {"model": "Model 2 (mean pool)", "feature": "wav2vec2", "params": 333_000, "val_f1": 0.341, "test_f1": 0.251, "std": 0.020, "config": "Optuna d=128, L=1, lr=8.03e-4", "variant": "Optuna", "tuned": True, "delta": 0.032, "verdict": "Genuine gain"},
-    {"model": "Model 3 (attention)", "feature": "MFCC", "params": 76_000, "val_f1": 0.324, "test_f1": 0.217, "std": 0.038, "config": "Optuna d=32, L=2, lr=5.16e-4", "variant": "Optuna", "tuned": True, "delta": 0.009, "verdict": "Within seed noise"},
+    {"model": "Model 3 (attention)", "feature": "MFCC", "params": 38_000, "val_f1": 0.324, "test_f1": 0.217, "std": 0.038, "config": "Optuna d=32, L=2, lr=5.16e-4", "variant": "Optuna", "tuned": True, "delta": 0.009, "verdict": "Within seed noise"},
     {"model": "Model 3 (attention)", "feature": "Mel", "params": 117_000, "val_f1": 0.322, "test_f1": 0.233, "std": 0.014, "config": "Optuna d=64, L=2, lr=1.24e-4", "variant": "Optuna", "tuned": True, "delta": 0.012, "verdict": "Within seed noise"},
     {"model": "Model 3 (attention)", "feature": "wav2vec2", "params": 180_000, "val_f1": 0.332, "test_f1": 0.241, "std": 0.021, "config": "Optuna d=64, L=1, lr=1.69e-3", "variant": "Optuna", "tuned": True, "delta": -0.005, "verdict": "Within seed noise"},
 ])
@@ -734,7 +734,7 @@ with tab2:
             st.markdown(f'<div class="metric-card"><div class="metric-num">+{best["test_f1"] - CHANCE:.3f}</div><div class="metric-lbl">Above uniform chance baseline</div><div class="metric-sub">Chance = {CHANCE}; best verdict: {best.get("verdict", "—")}</div></div>', unsafe_allow_html=True)
         with c3:
             genuine = int((OPTUNA_RESULTS["verdict"] == "Genuine gain").sum())
-            st.markdown(f'<div class="metric-card"><div class="metric-num">{genuine} / 9</div><div class="metric-lbl">Genuine Optuna gains</div><div class="metric-sub">LR Mel and M2 wav2vec2 are the robust wins.</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-num">{genuine} / 9</div><div class="metric-lbl">Genuine Optuna gains</div><div class="metric-sub">LR Mel, LR wav2vec2, and M2 wav2vec2 are the three genuine gains.</div></div>', unsafe_allow_html=True)
     with st.expander("📄 Full results table"):
         df_table = pd.concat([RESULTS, OPTUNA_RESULTS], ignore_index=True).copy()
         df_table["params"] = df_table["params"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "—")
