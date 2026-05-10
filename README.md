@@ -33,7 +33,8 @@ dashboard/
 
 experiments/
 ├── pretrained_embeddings/
-│   └── extract_wav2vec2_embeddings.ipynb   # One-off notebook: extracts frozen wav2vec2-base embeddings, caches to disk
+│   └── extract_wav2vec2_embeddings.ipynb   # extracts frozen wav2vec2-base embeddings
+│   └── finetune_wav2vec2.py                # Partial wav2vec2 fine-tuning
 ├── chance_baseline.py         # Computes uniform-random and stratified chance macro-F1 (4-class, 0.245 ± 0.027)
 ├── class_by_language.py       # Computes class distributions per language (used for the INTER-by-language figure)
 ├── cm_comparison.py           # Generates side-by-side row-normalised confusion matrices (Models 2 vs 3, wav2vec2)
