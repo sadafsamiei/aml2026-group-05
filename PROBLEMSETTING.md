@@ -289,7 +289,7 @@ The specific contributions are:
    and the Tagalog test distribution are structurally mismatched.
 
 5. **Bayesian hyperparameter search yielding three genuine gains**: LR mel
-   ($0.277 \to 0.311$, $+0.034$), LR wav2vec2 ($0.263 \to 0.285$, $+0.022) and Model 2 wav2vec2
+   ($0.277 \to 0.311$, $+0.034$), LR wav2vec2 ($0.263 \to 0.285$, $+0.022$) and Model 2 wav2vec2
    ($0.219 \to 0.251$, $+0.032$), with the remaining six combinations
    within seed noise of canonical or degraded — a pattern that correlates
    with the canonical val-test gap and confirms that tuning adds signal
