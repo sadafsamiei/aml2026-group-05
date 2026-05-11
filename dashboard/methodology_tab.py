@@ -794,7 +794,7 @@ def render_methodology_tab(
     stage_header(
         1, "Raw data & preprocessing",
         "1,009 clips of child vocalisations from 9 children across 3 languages. "
-        "Audio is denoised once and resampled to 16 kHz at load time.",
+        "Audio is denoised and resampled to 16 kHz before feature extraction.",
         ACCENT, SURFACE, SURFACE_2, BORDER_HI, TEXT, TEXT_MUTED,
     )
 
@@ -852,8 +852,7 @@ def render_methodology_tab(
             "Audio preprocessing",
             "<code>denoise → 16 kHz resample</code><br><br>"
             "<span style='color:" + TEXT_DIM + "; font-size:12px;'>"
-            "Done once. Cached as WAV files. All three models read the "
-            "same denoised audio.</span>",
+            "All three models use the same denoised 16 kHz audio representation.</span>",
             ACCENT_2, SURFACE, BORDER, TEXT, TEXT_MUTED,
         )
 
@@ -884,21 +883,21 @@ def render_methodology_tab(
          "(20 × T)",
          "(40,) for LR — mean+std collapsed over time<br>"
          "(128 × 230) for transformers — zero-padded to F_DIM=128",
-         "On-the-fly per clip"),
+         "Computed per clip"),
         (c2, "Mel spectrogram", ACCENT,
          "128-bin mel spectrogram, log-scale.",
          "(128 × 230)",
          "(256,) for LR — mean+std per mel bin<br>"
          "(128 × 230) for transformers — padded sequence",
-         "PNG cache on disk"),
+         "128-bin log-mel representation"),
         (c3, "wav2vec2",  COLOR_M3,
          "Frozen pretrained wav2vec2-base embeddings, last layer.",
          "(768 × T)",
          "(1536,) for LR — mean+std per embedding dim<br>"
          "(768 × T) for transformers — variable-length",
-         "NPY cache on disk"),
+         "Frozen pretrained representation"),
     ]
-    for col, name, color, desc, raw_shape, model_input, cache in feature_cards:
+    for col, name, color, desc, raw_shape, model_input, representation in feature_cards:
         with col:
             st.markdown(
                 f'<div style="background:{SURFACE}; border:1px solid {BORDER}; '
@@ -919,8 +918,8 @@ def render_methodology_tab(
                 f'<span style="color:{TEXT}; font-size:11px; line-height:1.55;">'
                 f'{model_input}</span></div>'
                 f'<div><span style="color:{TEXT_DIM}; font-size:10px; '
-                f'letter-spacing:0.08em; text-transform:uppercase;">Cache</span><br>'
-                f'<span style="color:{TEXT_MUTED}; font-size:11px;">{cache}</span></div>'
+                f'letter-spacing:0.08em; text-transform:uppercase;">Representation</span><br>'
+                f'<span style="color:{TEXT_MUTED}; font-size:11px;">{representation}</span></div>'
                 f'</div></div>',
                 unsafe_allow_html=True,
             )
@@ -937,7 +936,7 @@ def render_methodology_tab(
         f'margin-bottom:16px;">'
         f'Each model applies a different sequence of preprocessing steps. '
         f'The steps below describe the exact transformations between the '
-        f'cached feature file and the model input.'
+        f'feature representation and the model input.'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -1012,9 +1011,9 @@ def render_methodology_tab(
             f'<ol style="color:{TEXT}; font-size:13px; line-height:1.75; '
             f'margin:0; padding-left:22px;">'
 
-            f'<li><strong>Read cached feature</strong><br>'
+            f'<li><strong>Feature sequence input</strong><br>'
             f'<span style="color:{TEXT_MUTED}; font-size:12px;">'
-            f'Mel PNG or wav2vec2 NPY from disk'
+            f'MFCC, mel, or wav2vec2 frame sequence is passed to the transformer.'
             f'</span></li>'
 
             f'<li><strong>Padding to T=230 frames</strong><br>'
@@ -1071,7 +1070,7 @@ def render_methodology_tab(
 
             f'<li><strong>Steps 1–5 same as Model 2</strong><br>'
             f'<span style="color:{TEXT_MUTED}; font-size:12px;">'
-            f'Cached feature → padding → norm → SpecAugment → encoder.'
+            f'Feature sequence → padding → norm → SpecAugment → encoder.'
             f'</span></li>'
 
             f'<li><strong>Metadata standardisation</strong><br>'
@@ -1154,9 +1153,8 @@ def render_methodology_tab(
         ("Time stretching / pitch shifting",
          "SpecAugment already provides time-axis regularisation. Audio-domain "
          "augmentation on a 569-clip training set risks creating unrealistic samples."),
-        ("wav2vec2 fine-tuning",
-         "Out of scope given dataset size (569 training clips). Frozen pretrained "
-         "embeddings are the appropriate cheap option. Flagged as future work."),
+        ("Full wav2vec2 fine-tuning",
+         "Full end-to-end fine-tuning is not used for the headline result because the dataset has only 569 training clips. A small partial fine-tuning diagnostic is reported in Stage 5 instead."),
         ("CMVN (cepstral mean-var normalisation)",
          "Implicitly handled by StandardScaler (LR) and per-clip norm "
          "(transformers). Explicit CMVN would be redundant."),
@@ -1386,8 +1384,8 @@ def render_methodology_tab(
     # =======================================================================
     stage_header(
         5, "Ablations & diagnostics",
-        "Six experiments that test whether the headline finding is robust. "
-        "Each pulls real numbers from its corresponding JSON.",
+        "Additional checks test whether the headline finding is robust, including a single-seed partial wav2vec2 fine-tuning diagnostic. "
+        "Where available, cards pull numbers from the saved JSON files.",
         ACCENT, SURFACE, SURFACE_2, BORDER_HI, TEXT, TEXT_MUTED,
     )
 
@@ -1399,8 +1397,10 @@ def render_methodology_tab(
     chance_data = _read_json(chance_p)
     err_data    = _read_json(err_p)
     loco_data   = _read_json(loco_p)
+    partial_p = _latest(results_dir, "partial_finetune_wav2vec2*.json")
+    partial_data = _read_json(partial_p)
 
-    # Build the 6 ablation cards
+    # Build the ablation cards
     ablations = []
 
     # 1. Chance baseline
@@ -1501,8 +1501,41 @@ def render_methodology_tab(
         "color":  COLOR_M3,
     })
 
-    # Render ablation cards in a 2×3 grid
-    for row_start in [0, 3]:
+    # 7. Partial wav2vec2 fine-tuning diagnostic
+    if partial_data:
+        results = partial_data.get("results", [])
+
+        def _condition_row(name_fragment):
+            return next((r for r in results if name_fragment.lower() in r.get("condition", "").lower()), None)
+
+        frozen = _condition_row("frozen")
+        top2 = _condition_row("top 2")
+        top4 = _condition_row("top 4")
+
+        if frozen and top2 and top4:
+            frozen_test = frozen.get("test_f1", {}).get("mean")
+            top2_test = top2.get("test_f1", {}).get("mean")
+            top4_test = top4.get("test_f1", {}).get("mean")
+            frozen_gap = frozen.get("val_test_gap", {}).get("mean")
+            top2_gap = top2.get("val_test_gap", {}).get("mean")
+            top4_gap = top4.get("val_test_gap", {}).get("mean")
+
+            ablations.append({
+                "title":  "Partial wav2vec2 fine-tuning",
+                "value":  f"{top2_test:.3f}",
+                "label":  "top-2 layers, single seed diagnostic",
+                "detail": (
+                    f"frozen head: {frozen_test:.3f}<br>"
+                    f"top-4 layers: {top4_test:.3f}<br>"
+                    f"gap grows {frozen_gap:.3f} → {top2_gap:.3f} / {top4_gap:.3f}<br>"
+                    f"<span style='color:{ACCENT}; font-weight:600;'>"
+                    f"→ promising but not headline-ready</span>"
+                ),
+                "color":  "#F59E0B",
+            })
+
+    # Render ablation cards in a responsive grid
+    for row_start in range(0, len(ablations), 3):
         cols = st.columns(3)
         for i, col in enumerate(cols):
             idx = row_start + i
