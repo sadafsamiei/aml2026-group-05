@@ -33,14 +33,17 @@ dashboard/
 
 experiments/
 ├── pretrained_embeddings/
-│   └── extract_wav2vec2_embeddings.ipynb   # extracts frozen wav2vec2-base embeddings
-│   └── finetune_wav2vec2.py                # Partial wav2vec2 fine-tuning
-├── chance_baseline.py         # Computes uniform-random and stratified chance macro-F1 (4-class, 0.245 ± 0.027)
+│   ├── extract_wav2vec2_embeddings.ipynb   # One-off notebook: extracts frozen wav2vec2-base embeddings, caches to disk
+│   └── finetune_wav2vec2.py                # Controlled experiment: frozen vs top-2 / top-4 layer fine-tuning of
+│                                           #   wav2vec2 (1 seed, 35 epochs). Train F1 rises to 0.636 but val-test
+│                                           #   gap widens 10x (+0.006 to +0.059), confirming speaker-identity
+│                                           #   overfitting. Supports the decision to use frozen feature extraction.
+├── chance_baseline.py         # Computes uniform-random and stratified chance macro-F1 (4-class, 0.245 +/- 0.027)
 ├── class_by_language.py       # Computes class distributions per language (used for the INTER-by-language figure)
 ├── cm_comparison.py           # Generates side-by-side row-normalised confusion matrices (Models 2 vs 3, wav2vec2)
-├── ensemble_seeds.py          # Ablation: averages logits across 5 seeds for M2 mel (result: −0.024 vs single-seed mean)
+├── ensemble_seeds.py          # Ablation: averages logits across 5 seeds for M2 mel (result: -0.024 vs single-seed mean)
 ├── error_analysis.py          # Computes the per-clip agreement table (which clips each model gets right/wrong) — drives the 110/40.9% finding
-├── loco_model1_mel.py         # Leave-One-Child-Out CV for Model 1 (LR mel) across all 9 children — σ_speaker = 0.053
+├── loco_model1_mel.py         # Leave-One-Child-Out CV for Model 1 (LR mel) across all 9 children — sigma_speaker = 0.053
 ├── optuna_lr.py               # Optuna 80-trial continuous C line search for LR (extension; finds C=0.00492)
 └── optuna_search.py           # Optuna 60-trial TPE search for transformers (M2/M3, d/L/lr/dropouts)
 
@@ -62,14 +65,15 @@ utils/
 ├── attention_analysis.py      # v1: extracts attention weights from Model 3, computes attention concentration / mean focus span
 ├── attention_analysis_v2.py   # v2: same as above but loads multi-dropout v2 checkpoints (used after the Optuna extension)
 ├── extract_interesting_clips.py # Categorises test clips into 6 agreement buckets (all-correct, all-wrong, LR-wins, etc.) — CSV for presentation
-├── generate_heatmaps.py       # Generates the per-class F1 heatmap (3 models × 4 classes × 2 feature sources)
+├── generate_heatmaps.py       # Generates the per-class F1 heatmap (3 models x 4 classes x 3 feature sources)
 ├── generate_spectrograms.py   # Generates and caches 128-bin log-mel spectrograms as PNGs (n_fft=2048, hop=512, fmax=8kHz)
 └── make_presentation_figures.py # Generates all 5 presentation figures (complexity scatter, heatmap, val-vs-test gap, INTER-by-lang, Optuna summary)
 
 results/
-├── canonical/          # 6 files  — JSON files for canonical hyperparameter tuning
-├── optuna/             # 14 files — JSON files for Optuna hyperparameter tuning
-└── supplementary/      # 1 file   — JSON files for LOCO 
+├── canonical/          # 6 files  — canonical 5-seed multi-seed JSONs (Tables 1 and 2 in report)
+├── optuna/             # 14 files — Optuna search JSONs and 5-seed reruns of Optuna-selected configs
+└── supplementary/      # 2 files  — LOCO cross-validation JSON (sigma_speaker = 0.053) and
+                        #            wav2vec2 fine-tuning experiment JSON (val-test gap analysis)
 
 PROBLEMSETTING.md              # Problem setting adapted from the course brief to reflect the actual project methodology
 README.md                      # This file
@@ -182,7 +186,7 @@ Run Optuna for transformer models (runs both Models 2 and 3 sequentially, ~6 hou
 python experiments/optuna_search.py
 ```
 
-Optuna is the main hyperparameter-tuning extension. It yields three genuine gains: LR mel (0.277 → 0.311), LR wav2vec2 (0.263 → 0.285), and M2 wav2vec2 (0.219 → 0.251). All other combinations are within seed noise or degrade.
+Optuna is the main hyperparameter-tuning extension. It yields three genuine gains: LR mel (0.277 -> 0.311), LR wav2vec2 (0.263 -> 0.285), and M2 wav2vec2 (0.219 -> 0.251). All other combinations are within seed noise or degrade.
 
 ---
 
@@ -196,6 +200,12 @@ python experiments/class_by_language.py
 python experiments/cm_comparison.py
 python experiments/error_analysis.py
 python experiments/loco_model1_mel.py
+```
+
+Run wav2vec2 fine-tuning experiment (writes JSON to results/supplementary/):
+
+```bash
+python experiments/pretrained_embeddings/finetune_wav2vec2.py
 ```
 
 Run attention analysis:
