@@ -1,31 +1,20 @@
 """
 dashboard/app.py
 ----------------
-Streamlit dashboard for aml2026-group-05 — modern dark theme.
+Streamlit dashboard for aml2026-group-05
 
 Three tabs:
-  1. Headline Result      — interactive complexity vs F1 scatter
-  2. Per-class Explorer   — model x feature breakdown with live confusion matrix
-  3. Clip Explorer        — filter clips by agreement category, play audio inline
+  1. Methodology          - project methodologies and explanation of the pipeline
+  2. Headline Result      — interactive complexity vs F1 scatter
+  3. Per-class Explorer   — model x feature breakdown with live confusion matrix
+  4. Clip Explorer        — filter clips by agreement category, play audio inline
+  5. Presentation clips   - some interesting clips to back our assumptions and results
+
 
 Usage
 -----
-    cd /home/renku/work/aml2026-group-05
     pip install streamlit plotly
     streamlit run dashboard/app.py
-
-For best results, also create `.streamlit/config.toml` with:
-
-    [theme]
-    base = "dark"
-    primaryColor = "#F59E0B"
-    backgroundColor = "#0A0E1A"
-    secondaryBackgroundColor = "#131825"
-    textColor = "#E5E7EB"
-    font = "sans serif"
-
-The CSS injected below overrides most of this, but setting it natively
-makes the loading flash less jarring.
 """
 
 import json
@@ -38,8 +27,8 @@ import streamlit as st
 import plotly.graph_objects as go
 import plotly.io as pio
 
-HERE = Path(__file__).resolve().parent           # dashboard/
-sys.path.insert(0, str(HERE.parent / "src"))     # src/
+HERE = Path(__file__).resolve().parent          
+sys.path.insert(0, str(HERE.parent / "src"))     
 
 import config as cfg
 from methodology_tab import render_methodology_tab
@@ -53,35 +42,30 @@ SPEC_DIR    = cfg.SPEC_DIR
 # Theme constants
 # ---------------------------------------------------------------------------
 
-# Surfaces
-BG          = "#0A0E1A"              # main background
-SURFACE     = "#131825"              # card background
-SURFACE_2   = "#1A2030"              # elevated card / hover
+BG          = "#0A0E1A"             
+SURFACE     = "#131825"              
+SURFACE_2   = "#1A2030"             
 BORDER      = "rgba(255,255,255,0.06)"
 BORDER_HI   = "rgba(255,255,255,0.10)"
 
-# Text
-TEXT        = "#E5E7EB"              # primary
-TEXT_MUTED  = "#9CA3AF"              # secondary
-TEXT_DIM    = "#6B7280"              # tertiary / captions
+TEXT        = "#E5E7EB"             
+TEXT_MUTED  = "#9CA3AF"              
+TEXT_DIM    = "#6B7280"              
 
-# Accents
-ACCENT      = "#F59E0B"              # warm amber (primary brand)
-ACCENT_2    = "#22D3EE"              # bright cyan
+ACCENT      = "#F59E0B"             
+ACCENT_2    = "#22D3EE"              
 GRID        = "rgba(255,255,255,0.06)"
 
-# Model color palette (warmer, more pastel — better on dark)
-COLOR_M1    = "#60A5FA"              # blue
-COLOR_M2    = "#F59E0B"              # amber
-COLOR_M3    = "#34D399"              # mint green
+COLOR_M1    = "#60A5FA"              
+COLOR_M2    = "#F59E0B"              
+COLOR_M3    = "#34D399"              
 
-# Heatmap colorscale tuned to look good on dark surface
 DARK_HEATMAP = [
-    [0.00, "rgba(26, 32, 48, 1)"],       # near surface bg
+    [0.00, "rgba(26, 32, 48, 1)"],      
     [0.20, "rgba(96, 165, 250, 0.25)"],
     [0.45, "rgba(96, 165, 250, 0.55)"],
     [0.70, "rgba(34, 211, 238, 0.85)"],
-    [1.00, "rgba(34, 211, 238, 1)"],     # bright cyan
+    [1.00, "rgba(34, 211, 238, 1)"],     
 ]
 
 # ---------------------------------------------------------------------------
@@ -95,7 +79,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Default plotly template — every figure picks this up automatically
 pio.templates["aml_dark"] = go.layout.Template(
     layout=go.Layout(
         paper_bgcolor="rgba(0,0,0,0)",
@@ -584,12 +567,11 @@ def load_clips() -> tuple[pd.DataFrame, list[Path]]:
     when nothing is found.
     """
     search_dirs = [
-        RESULTS_DIR,                                  # config-derived
-        Path("/home/renku/work/data/results"),        # absolute fallback 1
-        cfg.RES_DIR / "results",                       # belt-and-braces
-        HERE.parent / "data" / "results",              # repo-relative fallback
+        RESULTS_DIR,                                  
+        Path("/home/renku/work/data/results"),       
+        cfg.RES_DIR / "results",                       
+        HERE.parent / "data" / "results",             
     ]
-    # Deduplicate while preserving order
     seen = set()
     search_dirs = [d for d in search_dirs
                     if not (str(d) in seen or seen.add(str(d)))]
@@ -822,7 +804,6 @@ with tab3:
         fig.update_layout(**layout)
         st.plotly_chart(fig, width="stretch")
 
-    # Confusion matrices (only for wav2vec2)
     if feat == "wav2vec2" and model_sel in (
             "Model 2 (mean pool)", "Model 3 (attention)", "All three (compare)"):
         st.markdown("---")
@@ -839,7 +820,6 @@ with tab3:
         elif model_sel == "Model 3 (attention)":
             _plot_cm(CM_M3_W2V, "Model 3 — attention")
 
-    # INTER bias readout
     st.markdown("---")
     st.markdown("#### INTER prediction bias")
 
@@ -1017,7 +997,6 @@ def _render_clip_explorer():
     )
     info_cols[4].metric("Child / Lang", f"{clip['child']} / {clip['lang']}")
 
-    # Audio
     wav_path = WAV_DIR / f"{audio_id}.wav"
     if wav_path.exists():
         st.markdown("**🔊 Audio**")
@@ -1026,7 +1005,6 @@ def _render_clip_explorer():
     else:
         st.warning(f"WAV not found: {wav_path}")
 
-    # Spectrogram
     spec_path = SPEC_DIR / f"{audio_id}.png"
     if spec_path.exists():
         st.markdown("**🎼 Mel spectrogram**")
@@ -1050,7 +1028,6 @@ with tab5:
         "Play them in sequence — the contrast between them is the project in 2 minutes."
     )
 
-    # Each entry: (audio_id, true_label, m1, m2, m3, headline, story, takeaway)
     PRESENTATION_CLIPS = [
         {
             "id":       "audio_0445",
@@ -1140,7 +1117,6 @@ with tab5:
         },
     ]
 
-    # ── Headline cards ────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("#### The story in one row")
     headline_cols = st.columns(4)
@@ -1163,9 +1139,7 @@ with tab5:
 
     st.markdown("---")
 
-    # ── Clip cards ────────────────────────────────────────────────────
     for i, clip in enumerate(PRESENTATION_CLIPS, start=1):
-        # Header row
         st.markdown(
             f'<div style="display:flex; align-items:center; gap:12px; '
             f'margin: 28px 0 12px 0;">'
@@ -1184,11 +1158,9 @@ with tab5:
             unsafe_allow_html=True,
         )
 
-        # Two-column layout: audio left, predictions right
         left, right = st.columns([3, 2])
 
         with left:
-            # Audio
             wav_path = WAV_DIR / f"{clip['id']}.wav"
             if wav_path.exists():
                 with open(wav_path, "rb") as f:
@@ -1196,14 +1168,12 @@ with tab5:
             else:
                 st.warning(f"Audio not found: {wav_path}")
 
-            # Mel spectrogram
             spec_path = SPEC_DIR / f"{clip['id']}.png"
             if spec_path.exists():
                 st.image(str(spec_path), width="stretch",
                          caption=f"Mel spectrogram — {clip['id']}")
 
         with right:
-            # True/predicted predictions card
             def pred_row(label, value, true_val):
                 ok = (value == true_val)
                 color = COLOR_M3 if ok else "#EF4444"
@@ -1253,7 +1223,6 @@ with tab5:
                 unsafe_allow_html=True,
             )
 
-        # Story + interpretation (full width below)
         st.markdown(
             f'<div style="background:{SURFACE}; border:1px solid {BORDER}; '
             f'border-radius:12px; padding:18px 22px; margin-top:14px; '
@@ -1272,7 +1241,6 @@ with tab5:
             unsafe_allow_html=True,
         )
 
-    # ── Closing summary ───────────────────────────────────────────────
     st.markdown("---")
     st.markdown("#### What these four clips together say")
     st.markdown(

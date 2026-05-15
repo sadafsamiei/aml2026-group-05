@@ -3,20 +3,14 @@ dashboard/methodology_tab.py
 ----------------------------
 Methodology tab for the aml2026-group-05 dashboard.
 
-Drop-in addition: import `render_methodology_tab` from this file and
-call it inside the new `with tab5:` block in `app.py`. All visual styling
-matches the existing dark theme (uses the same colour constants and
-Plotly template).
-
 Five stages:
   1. Raw data & preprocessing
   2. Feature extraction
   3. Hyperparameter tuning      ← Optuna best results only
-  4. Multi-seed canonical training ← reads final {lr_baseline,audio,attn}_multiseed_*.json
-  5. Ablations & diagnostics    ← reads chance_baseline / error_analysis / loco JSONs
+  4. Multi-seed canonical training 
+  5. Ablations & diagnostics    
 
-Data sources are auto-detected from RES_DIR/results/. If a JSON is
-missing, the relevant card shows a graceful warning instead of crashing.
+Data sources are auto-detected from RES_DIR/results/. 
 """
 
 import json
@@ -29,11 +23,10 @@ import plotly.graph_objects as go
 
 
 # ===========================================================================
-# Loaders — kept self-contained so this file is portable
+# Loaders 
 # ===========================================================================
 
 def _candidate_result_dirs(directory: Path):
-    """Return likely results directories for local, Renku, and repo-relative runs."""
     candidates = []
     if directory is not None:
         d = Path(directory)
@@ -59,7 +52,6 @@ def _candidate_result_dirs(directory: Path):
 
 
 def _latest(directory: Path, pattern: str):
-    """Find the newest matching file across candidate result directories."""
     matches = []
     for d in _candidate_result_dirs(directory):
         if d.exists():
@@ -69,7 +61,6 @@ def _latest(directory: Path, pattern: str):
 
 
 def _read_json(path):
-    """Read JSON, with fallback lookup by basename in common results dirs."""
     if path is None:
         return None
 
@@ -84,21 +75,6 @@ def _read_json(path):
                 return json.load(f)
     return None
 
-
-# Match grid_search_*.json files to (model_kind, feature_source)
-#
-# These are the canonical 8-config grids documented in the README.
-# They sweep over the hyperparameters required by the problem setting:
-# d_model, num_layers, dropout, lr.
-#
-# Format: (model_label, feature_label, filename, manual_winner_id_or_None)
-#
-# For M3 wav2vec2 the manual winner is config_id=2 (the third-ranked
-# config by val_f1) — see SPECIAL_NOTES. The top-ranked configs peaked
-# at epoch 2 and didn't reproduce on re-runs; we selected the only
-# top-3 entry showing sustained learning. This is documented in the
-# README. For all other grids the auto-winner (highest val_f1) is the
-# actual selection.
 GRID_FILE_MAPPING = [
     ("Model 2 (mean pool)", "Mel",
      "grid_search_audio_20260416_221506.json", None),
@@ -108,7 +84,6 @@ GRID_FILE_MAPPING = [
      "grid_search_attn_20260420_233821.json",  2),
 ]
 
-# Notes that appear above grids where something non-obvious happened
 SPECIAL_NOTES = {
     ("Model 3 (attention)", "wav2vec2"): (
         "Selection deviates from top-1. The numerically top-ranked configs "
@@ -147,9 +122,6 @@ def load_grid(results_dir: Path, filename: str):
     df = pd.DataFrame(rows)
     return df
 
-
-# Canonical multi-seed JSONs used by the final dashboard/report.
-# All canonical rows are now JSON-backed, including the two transformer-MFCC rows.
 CANONICAL_MULTISEED = {
     ("Model 1 (LR)",        "MFCC"):     "lr_baseline_mfcc20_multiseed_20260424_105805.json",
     ("Model 1 (LR)",        "Mel"):      "lr_baseline_mel_multiseed_20260424_110530.json",
@@ -188,7 +160,6 @@ def load_multiseed(results_dir: Path, model: str, feature: str):
 
 
 def _metric_mean_std(metric):
-    """Return (mean, std) from dict/scalar metric formats."""
     if isinstance(metric, dict):
         return metric.get("mean"), metric.get("std", 0.0)
     if isinstance(metric, (int, float)):
@@ -197,7 +168,6 @@ def _metric_mean_std(metric):
 
 
 def per_seed_values(ms):
-    """Extract seed labels, validation F1, and test F1 from LR/transformer schemas."""
     if not ms:
         return [], [], []
 
@@ -238,9 +208,6 @@ def per_seed_values(ms):
 
 
 def canonical_test_f1(results_dir: Path, model: str, feature: str):
-    """Return canonical multi-seed test F1 mean ± std as a tuple,
-    or (None, None) if not available. Used for the winner card on
-    8-config grids which don't record test_macro_f1."""
     d = load_multiseed(results_dir, model, feature)
     if d is None:
         return None, None
@@ -249,15 +216,9 @@ def canonical_test_f1(results_dir: Path, model: str, feature: str):
     except (KeyError, TypeError):
         return None, None
 
-
-# ===========================================================================
-# Reusable styled components
-# ===========================================================================
-
 def stage_header(num: int, title: str, subtitle: str, accent: str,
                  surface: str, surface_2: str, border_hi: str, text: str,
                  text_muted: str):
-    """Numbered stage header — large step number left, title + subtitle right."""
     st.markdown(
         f'<div style="display:flex; align-items:flex-start; gap:20px; '
         f'margin: 32px 0 18px 0; padding-bottom: 14px; '
@@ -272,7 +233,6 @@ def stage_header(num: int, title: str, subtitle: str, accent: str,
         f'<div style="color:{accent}; font-size:36px; font-weight:800; '
         f'line-height:1; font-family:JetBrains Mono,monospace;">{num:02d}</div>'
         f'</div>'
-        # Title + subtitle
         f'<div style="flex:1; padding-top:8px;">'
         f'<div style="color:{text}; font-size:24px; font-weight:700; '
         f'letter-spacing:-0.01em; margin-bottom:6px;">{title}</div>'
@@ -286,7 +246,6 @@ def stage_header(num: int, title: str, subtitle: str, accent: str,
 
 def info_card(title: str, body_html: str, accent: str,
               surface: str, border: str, text: str, text_muted: str):
-    """Subtle card with accent left border."""
     st.markdown(
         f'<div style="background:{surface}; border:1px solid {border}; '
         f'border-left:3px solid {accent}; border-radius:12px; '
@@ -300,11 +259,6 @@ def info_card(title: str, body_html: str, accent: str,
         unsafe_allow_html=True,
     )
 
-
-# ===========================================================================
-# Architecture diagram helpers
-# ===========================================================================
-
 FEATURE_SHAPES = {
     "MFCC": {"raw": "20 × T", "lr": "R40", "seq": "(B, T=230, F=128)"},
     "Mel": {"raw": "128 × 230", "lr": "R256", "seq": "(B, T=230, F=128)"},
@@ -313,7 +267,6 @@ FEATURE_SHAPES = {
 
 
 def _rgba(hex_color: str, alpha: float) -> str:
-    """Convert #RRGGBB to rgba(r,g,b,a). If already non-hex, return unchanged."""
     if not isinstance(hex_color, str) or not hex_color.startswith("#") or len(hex_color) != 7:
         return hex_color
     r = int(hex_color[1:3], 16)
@@ -346,7 +299,6 @@ def _draw_arch_box(fig, node, *, fill, text_color, font_size=13):
         font=dict(size=font_size, color=text_color, family="Inter"),
         align="center",
     )
-    # Invisible hover target so nodes are interactive without clutter.
     fig.add_trace(
         go.Scatter(
             x=[x],
@@ -420,7 +372,6 @@ def _presentation_architecture_figure(
     COLOR_M2,
     COLOR_M3,
 ):
-    """Presentation-style computational graph for the three model families."""
     shp = FEATURE_SHAPES[feature]
     fill = _rgba(SURFACE_2 if SURFACE_2.startswith("#") else "#1A2030", 0.97)
     note_fill = _rgba("#0F172A", 0.97)
@@ -718,7 +669,6 @@ def render_architecture_diagrams_section(
     COLOR_M2,
     COLOR_M3,
 ):
-    """Interactive model-structure diagram selector."""
     control_cols = st.columns([1.25, 1.05, 1.0])
     with control_cols[0]:
         model = st.selectbox(
@@ -757,10 +707,6 @@ def render_architecture_diagrams_section(
     )
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
-# ===========================================================================
-# Main render function
-# ===========================================================================
-
 def render_methodology_tab(
     results_dir: Path,
     *,
@@ -770,9 +716,6 @@ def render_methodology_tab(
     COLOR_M1: str, COLOR_M2: str, COLOR_M3: str,
     DARK_HEATMAP: list,
 ):
-    """Render the Methodology tab inline. Pass theme constants from app.py."""
-
-    # Intro
     st.markdown(
         f'<div style="background:linear-gradient(135deg, {SURFACE} 0%, '
         f'{SURFACE_2} 100%); border:1px solid {BORDER_HI}; '
@@ -789,7 +732,7 @@ def render_methodology_tab(
     )
 
     # =======================================================================
-    # STAGE 1 — Raw data & preprocessing
+    #  Raw data & preprocessing
     # =======================================================================
     stage_header(
         1, "Raw data & preprocessing",
@@ -800,9 +743,7 @@ def render_methodology_tab(
 
     c1, c2 = st.columns([3, 2])
     with c1:
-        # Class distribution as a simple bar chart
         classes = ["EXTEV", "INTER", "MOVE", "PLTOY"]
-        # Total counts across the full dataset (well-known from the README)
         total_counts = {"EXTEV": 222, "INTER": 325, "MOVE": 222, "PLTOY": 240}
         total = sum(total_counts.values())
         fig = go.Figure()
@@ -857,7 +798,7 @@ def render_methodology_tab(
         )
 
     # =======================================================================
-    # STAGE 2 — Feature extraction & preprocessing
+    #  Feature extraction & preprocessing
     # =======================================================================
     stage_header(
         2, "Feature extraction & preprocessing",
@@ -868,7 +809,6 @@ def render_methodology_tab(
         ACCENT, SURFACE, SURFACE_2, BORDER_HI, TEXT, TEXT_MUTED,
     )
 
-    # ── 2a: Three feature sources side-by-side ───────────────────────────
     st.markdown(
         f'<div style="color:{ACCENT}; font-size:13px; font-weight:600; '
         f'margin: 8px 0 12px 0; letter-spacing:0.04em;">'
@@ -924,7 +864,6 @@ def render_methodology_tab(
                 unsafe_allow_html=True,
             )
 
-    # ── 2b: Per-model preprocessing pipelines ───────────────────────────
     st.markdown(
         f'<div style="color:{ACCENT}; font-size:13px; font-weight:600; '
         f'margin: 28px 0 12px 0; letter-spacing:0.04em;">'
@@ -941,10 +880,8 @@ def render_methodology_tab(
         unsafe_allow_html=True,
     )
 
-    # Three vertical cards — one per model
     pp1, pp2, pp3 = st.columns(3)
 
-    # Model 1 — LR
     with pp1:
         st.markdown(
             f'<div style="background:{SURFACE}; border:1px solid {BORDER}; '
@@ -995,7 +932,6 @@ def render_methodology_tab(
             unsafe_allow_html=True,
         )
 
-    # Model 2 — mean pool transformer
     with pp2:
         st.markdown(
             f'<div style="background:{SURFACE}; border:1px solid {BORDER}; '
@@ -1052,7 +988,6 @@ def render_methodology_tab(
             unsafe_allow_html=True,
         )
 
-    # Model 3 — attentive transformer
     with pp3:
         st.markdown(
             f'<div style="background:{SURFACE}; border:1px solid {BORDER}; '
@@ -1105,7 +1040,6 @@ def render_methodology_tab(
             unsafe_allow_html=True,
         )
 
-    # ── 2c: Detailed model structure diagrams ─────────────────────────
     st.markdown(
         f'<div style="color:{ACCENT}; font-size:13px; font-weight:600; '
         f'margin: 30px 0 12px 0; letter-spacing:0.04em;">'
@@ -1134,7 +1068,6 @@ def render_methodology_tab(
         COLOR_M3=COLOR_M3,
     )
 
-    # ── 2c: Preprocessing choices we did NOT make ─────────────────────
     st.markdown(
         f'<div style="color:{ACCENT}; font-size:13px; font-weight:600; '
         f'margin: 28px 0 12px 0; letter-spacing:0.04em;">'
@@ -1187,7 +1120,7 @@ def render_methodology_tab(
                 )
 
     # =======================================================================
-    # STAGE 3 — Hyperparameter tuning
+    #  Hyperparameter tuning
     # =======================================================================
     stage_header(
         3, "Hyperparameter tuning — Optuna across all 9 cells",
@@ -1235,8 +1168,10 @@ def render_methodology_tab(
     st.dataframe(table[["Model", "Feature", "Trials", "Selection", "Canonical", "Optuna", "Delta", "Best params", "Verdict"]], width="stretch", hide_index=True)
     st.markdown(f'<div style="color:{TEXT_DIM}; font-size:12px; line-height:1.65; margin-top:10px;">Important: Optuna selection never uses the test set. LR is selected by inner LOPO-CV; transformers are selected by validation macro-F1 and then interpreted on the fixed Tagalog test child. The negative/within-noise outcomes are evidence that validation F1 is often a noisy selector under this cross-linguistic split.</div>', unsafe_allow_html=True)
 
-    # STAGE 4 — Multi-seed canonical training
     # =======================================================================
+    #  Multi-seed canonical training
+    # =======================================================================
+
     stage_header(
         4, "Multi-seed canonical training",
         "Final model configurations are evaluated with 5 random seeds where applicable. "
@@ -1253,7 +1188,7 @@ def render_methodology_tab(
         "Inspect run",
         options=range(len(option_labels)),
         format_func=lambda i: option_labels[i],
-        index=1,  # default to LR Mel — the headline canonical run
+        index=1, 
         key="methodology_canonical_choice",
     )
     sel_model, sel_feat = canonical_options[chosen_idx]
@@ -1380,8 +1315,10 @@ def render_methodology_tab(
                     unsafe_allow_html=True,
                 )
 
-    # STAGE 5 — Ablations & diagnostics
     # =======================================================================
+    #  Ablations & diagnostics
+    # =======================================================================
+
     stage_header(
         5, "Ablations & diagnostics",
         "Additional checks test whether the headline finding is robust, including a single-seed partial wav2vec2 fine-tuning diagnostic. "
@@ -1389,7 +1326,6 @@ def render_methodology_tab(
         ACCENT, SURFACE, SURFACE_2, BORDER_HI, TEXT, TEXT_MUTED,
     )
 
-    # Pull data from JSON files
     chance_p = _latest(results_dir, "chance_baseline_*.json")
     err_p    = _latest(results_dir, "error_analysis_*.json")
     loco_p   = _latest(results_dir, "loco_model1_mel_*.json")
@@ -1400,10 +1336,8 @@ def render_methodology_tab(
     partial_p = _latest(results_dir, "partial_finetune_wav2vec2*.json")
     partial_data = _read_json(partial_p)
 
-    # Build the ablation cards
     ablations = []
 
-    # 1. Chance baseline
     if chance_data:
         strategies = chance_data.get("strategies", [])
         unif = next((s for s in strategies if s["strategy"] == "uniform"), None)
@@ -1422,7 +1356,6 @@ def render_methodology_tab(
                 "color":  ACCENT_2,
             })
 
-    # 2. Error analysis
     if err_data:
         overlap = err_data.get("error_overlap", {})
         n = err_data.get("n_test", 269)
@@ -1440,7 +1373,6 @@ def render_methodology_tab(
             "color":  "#EF4444",
         })
 
-    # 3. LOCO CV
     if loco_data:
         loco_mean = loco_data.get("loco_mean_test_f1", 0.213)
         loco_std  = loco_data.get("loco_std_test_f1",  0.053)
@@ -1458,7 +1390,6 @@ def render_methodology_tab(
             "color":  COLOR_M2,
         })
 
-    # 4. Seed ensembling (hardcoded — documented in README)
     ablations.append({
         "title":  "Seed ensembling",
         "value":  "−0.024",
@@ -1472,7 +1403,6 @@ def render_methodology_tab(
         "color":  "#A78BFA",
     })
 
-    # 5. Delta MFCC (hardcoded — documented in README)
     ablations.append({
         "title":  "Delta-MFCC features (LR)",
         "value":  "−0.024",
@@ -1486,7 +1416,6 @@ def render_methodology_tab(
         "color":  COLOR_M1,
     })
 
-    # 6. Metadata ablation (hardcoded — documented in README)
     ablations.append({
         "title":  "Metadata ablation (M3 wav2vec2)",
         "value":  "age",
@@ -1501,7 +1430,6 @@ def render_methodology_tab(
         "color":  COLOR_M3,
     })
 
-    # 7. Partial wav2vec2 fine-tuning diagnostic
     if partial_data:
         results = partial_data.get("results", [])
 
@@ -1534,7 +1462,6 @@ def render_methodology_tab(
                 "color":  "#F59E0B",
             })
 
-    # Render ablation cards in a responsive grid
     for row_start in range(0, len(ablations), 3):
         cols = st.columns(3)
         for i, col in enumerate(cols):
@@ -1566,7 +1493,6 @@ def render_methodology_tab(
                     unsafe_allow_html=True,
                 )
 
-    # ── Closing summary ───────────────────────────────────────────────
     st.markdown(
         f'<div style="background:linear-gradient(135deg, {SURFACE} 0%, '
         f'{SURFACE_2} 100%); border:1px solid {BORDER_HI}; '
