@@ -78,7 +78,7 @@ results/
 PROBLEMSETTING.md              # Problem setting adapted from the course brief to reflect the actual project methodology
 README.md                      # This file
 requirements.txt               # Python dependencies (torch, librosa, scikit-learn, optuna, streamlit, etc.)
-project_report.pdf             # Final compiled 18-page report
+project_report.pdf             # Final  report
 ```
 
 ---
