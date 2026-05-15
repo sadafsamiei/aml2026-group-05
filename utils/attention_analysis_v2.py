@@ -1,32 +1,8 @@
 """
 utils/attention_analysis_v2.py
 ---------------------------------
-Improved attention figures. Same data as attention_analysis.py but
-presentation-ready plots:
+Improved attention figures.
 
-  (A) Per-class comparison: d=32 mel (linear y) vs d=192 wav2vec2 (log y +
-      clipped y-axis). The log y on the wav2vec2 side reveals the shape
-      of attention that the linear plot hides — the "0 everywhere except
-      one spike" pattern has real structure when viewed on a log scale.
-
-  (B) Effective frames analysis: for each clip, count how many top-ranked
-      frames are needed to accumulate 50% / 80% / 95% of the attention
-      mass. This metric makes the "concentration vs distribution" story
-      quantitatively visible.
-
-  (C) Learned temperature τ bar chart across 5 seeds — shows that τ was
-      not the cause of sharpening (all τ ∈ [0.67, 0.96], below the init
-      of 1.0).
-
-Outputs
--------
-  RES_DIR/figures/attn_v2_per_class_<timestamp>.png
-  RES_DIR/figures/attn_v2_effective_frames_<timestamp>.png
-  RES_DIR/figures/attn_v2_tau_bar_<timestamp>.png
-  RES_DIR/results/attn_v2_<timestamp>.json
-
-Runs on the canonical checkpoints hard-coded below — same as
-attention_analysis.py. If you updated those, update this script too.
 """
 
 import json
@@ -56,10 +32,6 @@ from data_utils import (
 from models import AttentivePoolingTransformer
 
 
-# ---------------------------------------------------------------------------
-# Canonical checkpoints (MUST match attention_analysis.py / README)
-# ---------------------------------------------------------------------------
-
 D32_MEL_CKPTS = [
     (42,   "/home/renku/work/data/models/transformer_attn_attn_seed42_fold0_20260416_224008.pt"),
     (123,  "/home/renku/work/data/models/transformer_attn_attn_seed123_fold0_20260416_224431.pt"),
@@ -80,10 +52,6 @@ D192_HP = {"d_model": 192, "nhead": 4, "num_layers": 1, "dropout": 0.3}
 
 MAX_LEN = 230
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def build_model(f_dim, hp, use_meta, device):
     return AttentivePoolingTransformer(
@@ -118,7 +86,6 @@ def attention_weights_single(model, x, mask, meta, use_meta, device):
 
 
 def attention_weights_batch(model, loader, use_meta, device):
-    """Return a list of (weights_1d, n_real_frames) tuples, one per clip."""
     model.eval()
     out = []
     with torch.no_grad():
@@ -140,7 +107,6 @@ def attention_weights_batch(model, loader, use_meta, device):
 
 
 def effective_frames(weights, fraction=0.95):
-    """How many top-weighted frames are needed to reach `fraction` of total mass?"""
     sorted_w = np.sort(weights)[::-1]
     cum = np.cumsum(sorted_w)
     total = cum[-1]
@@ -167,14 +133,7 @@ def pick_reps(val_df):
     return picked
 
 
-# ---------------------------------------------------------------------------
-# Config-switching datasets
-# ---------------------------------------------------------------------------
-
 def _set_feature_mode(pretrained: bool):
-    """Patch cfg + data_utils module globals so SpectrogramDataset loads
-    the right feature type. A bit ugly but keeps us from restructuring
-    data_utils.py mid-project."""
     cfg.USE_PRETRAINED  = pretrained
     cfg.USE_MFCC        = False
     cfg.F_DIM           = 768 if pretrained else 128
@@ -184,10 +143,6 @@ def _set_feature_mode(pretrained: bool):
     du.USE_MFCC = False
     du.USE_SPECAUGMENT = False
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main():
     device = torch.device(
@@ -218,7 +173,6 @@ def main():
                                    for c, r in reps.items() if r is not None},
     }
 
-    # ── d=32 mel ──────────────────────────────────────────────────────
     print(f"\n{'='*62}\nConfig 1: d=32, mel\n{'='*62}")
     _set_feature_mode(pretrained=False)
     val_ds = MetadataSpectrogramDataset(
@@ -234,7 +188,6 @@ def main():
         results["d32_mel"]["tau"][seed] = {"log_tau": log_tau, "tau": tau}
         print(f"  seed {seed:>5}: log_tau={log_tau:.4f} → τ={tau:.4f}")
 
-        # Per-rep attention profiles
         for cname, row in reps.items():
             if row is None: continue
             idx = aid_to_idx[row["audio_ID"]]
@@ -245,7 +198,6 @@ def main():
                 "weights": w[:n_real].tolist(), "T_real": int(n_real),
             }
 
-        # Full-val-set effective-frame stats
         batch_out = attention_weights_batch(model, val_loader, use_meta, device)
         eff50 = [effective_frames(w, 0.50) for w, _ in batch_out]
         eff80 = [effective_frames(w, 0.80) for w, _ in batch_out]
@@ -255,7 +207,6 @@ def main():
             "eff50": eff50, "eff80": eff80, "eff95": eff95, "T_real": T_real,
         }
 
-    # ── d=192 wav2vec2 ────────────────────────────────────────────────
     print(f"\n{'='*62}\nConfig 2: d=192, wav2vec2\n{'='*62}")
     _set_feature_mode(pretrained=True)
     val_ds = MetadataSpectrogramDataset(
@@ -290,12 +241,9 @@ def main():
             "eff50": eff50, "eff80": eff80, "eff95": eff95, "T_real": T_real,
         }
 
-    # ── Save JSON ──────────────────────────────────────────────────────
-    # Convert seed keys to strings
     j = json.loads(json.dumps(results, default=lambda o: (
         list(o) if isinstance(o, (list, tuple)) else o
     )))
-    # Rebuild with str seed keys
     def _stringify(d):
         if not isinstance(d, dict): return d
         return {str(k): _stringify(v) for k, v in d.items()}
@@ -305,7 +253,6 @@ def main():
         json.dump(j, f, indent=2)
     print(f"\nRaw data → {out_json}")
 
-    # ── FIGURE A: per-class profiles, log y on wav2vec2 ────────────────
     print("\nBuilding figure A (per-class profiles)...")
     classes_present = [c for c in CLASS_NAMES if reps.get(c) is not None]
     n_c = len(classes_present)
@@ -316,7 +263,6 @@ def main():
         audio_id = reps[cname]["audio_ID"]
         child    = reps[cname]["child"]
 
-        # Left: d=32 mel, linear y
         ax = axes[row_i, 0]
         class_attn = results["d32_mel"]["per_class_attn"].get(cname, {})
         if class_attn:
@@ -335,14 +281,12 @@ def main():
         ax.grid(alpha=0.3)
         if row_i == 0: ax.legend(fontsize=7, loc="upper right", ncol=2)
 
-        # Right: d=192 wav2vec2, SYMLOG y (reveals sub-spike structure)
         ax = axes[row_i, 1]
         class_attn = results["d192_w2v"]["per_class_attn"].get(cname, {})
         if class_attn:
             T_real = next(iter(class_attn.values()))["T_real"]
             for i, (seed, entry) in enumerate(sorted(class_attn.items())):
                 w = np.array(entry["weights"])
-                # Clip zeros up to a tiny floor so symlog works
                 w_plot = np.maximum(w, 1e-6)
                 ax.plot(range(len(w_plot)), w_plot, color=cmap(i), lw=1.0,
                         alpha=0.85, label=f"seed {seed}")
@@ -368,7 +312,6 @@ def main():
     plt.close()
     print(f"  → {out_a}")
 
-    # ── FIGURE B: effective-frame distributions ────────────────────────
     print("Building figure B (effective frames)...")
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.2))
     for col, (frac_key, frac_label) in enumerate([
@@ -406,7 +349,6 @@ def main():
     plt.close()
     print(f"  → {out_b}")
 
-    # ── FIGURE C: learned temperature ──────────────────────────────────
     print("Building figure C (τ bar chart)...")
     fig, ax = plt.subplots(figsize=(8, 4.5))
     seeds_sorted = sorted(results["d192_w2v"]["tau"].keys())
@@ -437,7 +379,6 @@ def main():
     plt.close()
     print(f"  → {out_c}")
 
-    # ── Summary ────────────────────────────────────────────────────────
     def _agg(xs):
         import numpy as _np
         return float(_np.median(xs)), float(_np.mean(xs)), float(_np.std(xs))

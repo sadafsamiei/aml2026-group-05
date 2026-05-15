@@ -1,11 +1,10 @@
 """
 regenerate_optuna_figures.py
 -------------------------------------
-Regenerates the Optuna extension figures and fills the three previously
-missing cells in the canonical-vs-Optuna chart from the added JSON files:
+Regenerates the Optuna extension figures
 
   • M2 MFCC canonical: audio_canonical_multiseed_M2_MFCC.json
-  • M2 Mel Optuna:     audio_multiseed_optuna_M2_Mel.json (5-seed rerun; preferred)
+  • M2 Mel Optuna:     audio_multiseed_optuna_M2_Mel.json 
   • M3 MFCC canonical: attn_canonical_multiseed_M3_MFCC.json
 
 Usage
@@ -18,16 +17,6 @@ or from the directory containing the JSON files:
 
     python regenerate_optuna_figures_complete.py --data-dir .
 
-Outputs
--------
-    <FIGURES_DIR>/presentation/fig5_complexity_vs_f1.png
-    <FIGURES_DIR>/presentation/fig8_optuna_summary.png
-    <FIGURES_DIR>/presentation/fig9_canonical_vs_optuna.png
-
-The script reads the added JSONs when present, preferring the corrected
-M2 Mel Optuna 5-seed rerun JSON over the single-trial search JSON. It also
-keeps audited fallback values so the figures can still be regenerated if a
-JSON is absent.
 """
 
 from __future__ import annotations
@@ -45,30 +34,21 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-# ---------------------------------------------------------------------------
-# Project path / output directory handling
-# ---------------------------------------------------------------------------
 
 HERE = Path(__file__).resolve().parent
 
-# Works both when this file is placed in utils/ and when it is run standalone.
 for candidate in [HERE.parent / "src", HERE / "src"]:
     if candidate.exists():
         sys.path.insert(0, str(candidate))
 
 try:
-    from config import RESULTS_DIR, FIGURES_DIR  # type: ignore
+    from config import RESULTS_DIR, FIGURES_DIR 
 except Exception:
-    # Standalone fallback for running directly next to the uploaded JSON files.
     RESULTS_DIR = HERE
     FIGURES_DIR = HERE / "figures"
 
 OUT_DIR = Path(FIGURES_DIR) / "presentation"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-# ---------------------------------------------------------------------------
-# Data structures
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class Result:
@@ -94,65 +74,47 @@ CELL_ORDER: list[Cell] = [
     ("M3", "MFCC"),     ("M3", "Mel"),     ("M3", "wav2vec2"),
 ]
 
-# ---------------------------------------------------------------------------
-# Single source of truth for cells not supplied by the three new JSONs
-# ---------------------------------------------------------------------------
-# Values are test macro-F1 mean/std and approximate parameter counts used in
-# the report figure.  The three previously missing entries are filled from JSON
-# in load_results().
 
 CANONICAL_FALLBACK: dict[Cell, Result | None] = {
-    # LR — deterministic lbfgs, so std = 0
     ("LR", "MFCC"):     Result(0.253, 0.000,    164),
     ("LR", "Mel"):      Result(0.277, 0.000,   1028),
     ("LR", "wav2vec2"): Result(0.263, 0.000,   6148),
 
-    # M2 / AudioTransformer
-    ("M2", "MFCC"):     None,  # filled from audio_canonical_multiseed_M2_MFCC.json
+    ("M2", "MFCC"):     None,  
     ("M2", "Mel"):      Result(0.249, 0.020, 251_140),
     ("M2", "wav2vec2"): Result(0.219, 0.018, 333_060),
 
-    # M3 / AttentivePoolingTransformer
-    ("M3", "MFCC"):     None,  # filled from attn_canonical_multiseed_M3_MFCC.json
+    ("M3", "MFCC"):     None,  
     ("M3", "Mel"):      Result(0.221, 0.013,  38_789),
     ("M3", "wav2vec2"): Result(0.246, 0.016, 117_701),
 }
 
 OPTUNA_FALLBACK: dict[Cell, Result | None] = {
-    # LR — best C from line search
     ("LR", "MFCC"):     Result(0.239, 0.000,    164, "C=0.01735"),
     ("LR", "Mel"):      Result(0.311, 0.000,   1028, "C=0.00492"),
     ("LR", "wav2vec2"): Result(0.285, 0.000,   6148, "C=0.01498"),
 
-    # M2 — Optuna winners / reruns
     ("M2", "MFCC"):     Result(0.219, 0.029, 251_140, "d=128,L=1"),
-    ("M2", "Mel"):      Result(0.226, 0.018, 251_140, "d=32,L=2"),  # overwritten by audio_multiseed_optuna_M2_Mel.json when present
+    ("M2", "Mel"):      Result(0.226, 0.018, 251_140, "d=32,L=2"), 
     ("M2", "wav2vec2"): Result(0.251, 0.020, 333_060, "d=128,L=1"),
 
-    # M3 — Optuna winners / reruns
     ("M3", "MFCC"):     Result(0.217, 0.038,  38_789, "d=32,L=2"),
     ("M3", "Mel"):      Result(0.233, 0.014,  38_789, "d=64,L=2"),
     ("M3", "wav2vec2"): Result(0.241, 0.021, 117_701, "d=64,L=1"),
 }
 
-# Parameter-count fallbacks for JSONs that do not store n_params.
-# These are used only for log-complexity plotting; fig9 itself does not depend
-# on n_params.
 PARAM_FALLBACK: dict[Cell, int] = {
     ("M2", "MFCC"): 251_140,
     ("M2", "Mel"): 251_140,
     ("M3", "MFCC"): 38_789,
 }
 
-# ---------------------------------------------------------------------------
-# Colours and visual conventions
-# ---------------------------------------------------------------------------
 
 COLOR_M1 = "#1f77b4"
 COLOR_M2 = "#ff7f0e"
 COLOR_M3 = "#2ca02c"
-COLOR_OPT = "#e91e63"       # pink = genuine gain
-COLOR_DEG = "#888888"       # grey = genuine loss
+COLOR_OPT = "#e91e63"      
+COLOR_DEG = "#888888"       
 COLOR_CHANCE = "#bbbbbb"
 COLOR_CANON = "lightsteelblue"
 COLOR_NOISE = "lightcoral"
@@ -160,9 +122,7 @@ COLOR_NOISE = "lightcoral"
 CHANCE_LEVEL = 0.245
 CHANCE_BAND = 0.027
 
-# ---------------------------------------------------------------------------
-# JSON loading helpers
-# ---------------------------------------------------------------------------
+
 
 def _candidate_dirs(data_dir: Path | None) -> list[Path]:
     dirs = []
@@ -219,11 +179,9 @@ def result_from_multiseed_json(path: Path, cell: Cell) -> Result:
 
 
 def result_from_optuna_json(path: Path, cell: Cell) -> Result:
-    """Read either a single-trial Optuna JSON or a 5-seed Optuna rerun JSON."""
     with path.open() as f:
         data = json.load(f)
 
-    # Corrected M2 Mel file is a multiseed rerun of the Optuna-selected config.
     if isinstance(data.get("test_macro_f1"), dict):
         test_mean, test_std = _metric_pair(data, "test_macro_f1")
         val_mean, val_std = _metric_pair(data, "val_macro_f1")
@@ -257,7 +215,6 @@ def load_results(data_dir: Path | None = None) -> tuple[dict[Cell, Result | None
     optuna = dict(OPTUNA_FALLBACK)
     used: dict[str, Path] = {}
 
-    # Fill the three cells that were missing in the previous figure.
     m2_mfcc_can = find_json("audio_canonical_multiseed_M2_MFCC.json", data_dir)
     if m2_mfcc_can:
         canonical[("M2", "MFCC")] = result_from_multiseed_json(m2_mfcc_can, ("M2", "MFCC"))
@@ -275,12 +232,9 @@ def load_results(data_dir: Path | None = None) -> tuple[dict[Cell, Result | None
 
     return canonical, optuna, used
 
-# ---------------------------------------------------------------------------
-# Shared classification and plotting helpers
-# ---------------------------------------------------------------------------
+
 
 def classify_delta(canonical: Result | None, optuna: Result | None) -> str:
-    """Classify the Optuna-vs-canonical delta using the report's |Δ|/σ rule."""
     if canonical is None or optuna is None:
         return "missing"
     delta = optuna.test_mean - canonical.test_mean
@@ -306,9 +260,6 @@ def optuna_color(cls: str) -> str:
 def label_for(cell: Cell) -> str:
     return f"{cell[0]}\n{cell[1]}"
 
-# ---------------------------------------------------------------------------
-# Figure 5 — model complexity vs F1
-# ---------------------------------------------------------------------------
 
 def fig5_complexity_vs_f1(canonical: dict[Cell, Result | None], optuna: dict[Cell, Result | None]) -> Path:
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -327,7 +278,6 @@ def fig5_complexity_vs_f1(canonical: dict[Cell, Result | None], optuna: dict[Cel
                         color=colors[model], capsize=3, lw=0.8,
                         alpha=0.6, zorder=2)
 
-    # Overlay stars for any Optuna change that exceeds the noise rule.
     for cell, o in optuna.items():
         c = canonical.get(cell)
         if c is None or o is None or o.n_params is None:
@@ -381,9 +331,6 @@ def fig5_complexity_vs_f1(canonical: dict[Cell, Result | None], optuna: dict[Cel
     plt.close(fig)
     return out
 
-# ---------------------------------------------------------------------------
-# Figure 8 — Optuna summary
-# ---------------------------------------------------------------------------
 
 def _plot_trials(ax, jsonpath: Path | None, color: str, label: str) -> None:
     if not jsonpath or not jsonpath.exists():
@@ -404,7 +351,6 @@ def fig8_optuna_summary(
 ) -> Path:
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
 
-    # Panel 1: LR Mel C search if the JSON exists; otherwise leave a clear placeholder.
     lr_mel_json = latest_json(["optuna_lr_mel_*.json", "*lr*mel*optuna*.json"], data_dir)
     if lr_mel_json and lr_mel_json.exists():
         with lr_mel_json.open() as f:
@@ -429,7 +375,6 @@ def fig8_optuna_summary(
                      ha="center", va="center", transform=axes[0].transAxes)
         axes[0].set_axis_off()
 
-    # Panel 2: Transformer Mel val-vs-test scatter.
     m2_mel_json = find_json("audio_optuna_M2_Mel.json", data_dir) or latest_json(["optuna_search_audio_mel_*.json"], data_dir)
     m3_mel_json = latest_json(["optuna_search_attn_mel_*.json", "*attn*mel*optuna*.json"], data_dir)
     _plot_trials(axes[1], m2_mel_json, "tab:green", "M2 Mel")
@@ -452,7 +397,6 @@ def fig8_optuna_summary(
     axes[1].grid(alpha=0.3)
     axes[1].legend(fontsize=7, loc="lower right")
 
-    # Panel 3: compact canonical-vs-Optuna summary for every cell.
     x = np.arange(len(CELL_ORDER))
     width = 0.36
     canon_vals = [canonical[k].test_mean if canonical.get(k) else 0 for k in CELL_ORDER]
@@ -500,10 +444,6 @@ def fig8_optuna_summary(
     plt.close(fig)
     return out
 
-# ---------------------------------------------------------------------------
-# Figure 9 — detailed canonical-vs-Optuna chart
-# ---------------------------------------------------------------------------
-
 def fig9_canonical_vs_optuna_detailed(
     canonical: dict[Cell, Result | None],
     optuna: dict[Cell, Result | None],
@@ -529,7 +469,6 @@ def fig9_canonical_vs_optuna_detailed(
                color=optuna_color(cls), edgecolor="black", lw=0.6,
                error_kw={"lw": 0.7, "capsize": 3})
 
-    # Δ annotations for every cell where both bars exist.
     for i, cell in enumerate(CELL_ORDER):
         c = canonical.get(cell)
         o = optuna.get(cell)
@@ -567,10 +506,6 @@ def fig9_canonical_vs_optuna_detailed(
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser()

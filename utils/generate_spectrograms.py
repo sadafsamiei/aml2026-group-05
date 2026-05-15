@@ -2,12 +2,6 @@
 generate_spectrograms.py
 ------------------------
 Generate clean grayscale mel spectrogram PNGs for model training.
-Saves to RES_DIR/spectrograms/audio_XXXX.png
-
-Each PNG is a true grayscale image of shape (SPEC_N_MELS, T) — no axes,
-no colorbar, no matplotlib decoration. Pixel values map linearly from
-the dB range [-80, 0] to [0, 255]. The model loads these at native
-resolution and resizes to (MAX_LEN, F_DIM) inside SpectrogramDataset.
 
 Usage:
     python utils/generate_spectrograms.py
@@ -26,16 +20,6 @@ import config as cfg
 
 
 def wav_to_png(wav_path: Path, out_path: Path) -> None:
-    """
-    Convert one WAV file to a clean grayscale mel spectrogram PNG.
-
-    Pipeline:
-      WAV → mono float32 → mel spectrogram → dB scale → [0,255] uint8 → PNG
-
-    The output image contains only acoustic content — no axes, labels, or
-    colorbar. Shape: (SPEC_N_MELS=128 rows, T cols) where T depends on
-    clip duration. SpectrogramDataset resizes to (F_DIM, MAX_LEN) at load time.
-    """
     import librosa
     import numpy as np
     from PIL import Image
@@ -49,16 +33,10 @@ def wav_to_png(wav_path: Path, out_path: Path) -> None:
         n_fft=cfg.SPEC_N_FFT, hop_length=cfg.SPEC_HOP,
         n_mels=cfg.SPEC_N_MELS, fmin=cfg.SPEC_FMIN, fmax=cfg.SPEC_FMAX,
     )
-    # Convert to dB, clipped to [-80, 0] range
-    log_mel = librosa.power_to_db(mel, ref=np.max, top_db=80)   # (128, T), range [-80, 0]
+    log_mel = librosa.power_to_db(mel, ref=np.max, top_db=80)  
 
-    # Map [-80, 0] → [0, 255] linearly
-    # 0 dB (loudest) → 255 (white), -80 dB (silence) → 0 (black)
     img_arr = ((log_mel + 80.0) / 80.0 * 255.0).clip(0, 255).astype(np.uint8)
 
-    # img_arr shape is (n_mels=128, T) — PIL expects (height, width)
-    # Low frequencies are at row 0; flip vertically so low freqs are at bottom
-    # (consistent with standard spectrogram orientation)
     img_arr = np.flipud(img_arr)
 
     Image.fromarray(img_arr, mode="L").save(str(out_path))
@@ -76,7 +54,6 @@ def main():
 
     cfg.print_config()
 
-    # ── Dependency check ─────────────────────────────────────────────────
     missing = []
     for pkg in ["librosa", "PIL"]:
         try:
@@ -89,7 +66,6 @@ def main():
         sys.exit(1)
     print("Dependencies: librosa ✓  PIL ✓")
 
-    # ── Locate WAV files ─────────────────────────────────────────────────
     if not cfg.WAV_DIR.exists():
         print(f"\n✗ WAV dir not found: {cfg.WAV_DIR}")
         sys.exit(1)
@@ -105,14 +81,12 @@ def main():
     if args.limit:
         wav_files = wav_files[:args.limit]
 
-    # ── Create output dir ────────────────────────────────────────────────
     cfg.SPEC_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Output dir : {cfg.SPEC_DIR}  (exists={cfg.SPEC_DIR.exists()})")
     print(f"Format     : grayscale PNG, {cfg.SPEC_N_MELS} mel bins × T frames")
     print(f"             (no axes/labels — clean acoustic content only)")
     print(f"Generating {len(wav_files)} spectrograms ...\n")
 
-    # ── Test first file immediately ──────────────────────────────────────
     import numpy as np
     from PIL import Image
 
@@ -135,7 +109,6 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    # ── Process remaining files ──────────────────────────────────────────
     from tqdm import tqdm
     generated = 1
     skipped   = 0

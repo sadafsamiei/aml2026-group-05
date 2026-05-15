@@ -2,7 +2,6 @@
 generate_spectrograms.py
 ------------------------
 Generate viridis mel spectrogram PNGs.
-Saves to RES_DIR/spectrograms/audio_XXXX.png
 
 Usage:
     python utils/generate_heatmaps.py

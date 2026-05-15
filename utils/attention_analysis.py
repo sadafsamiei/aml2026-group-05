@@ -2,38 +2,13 @@
 utils/attention_analysis.py
 -----------------------------
 Compare attention weight profiles for Model 3 between:
-  - d=32 mel (grid-selected, 26K params) — canonical Apr 16 run, test F1 0.221±0.013
-  - d=192 wav2vec2 (re-gridded, 648K params) — canonical Apr 21 run, test F1 0.246±0.016
+  - d=32 mel (grid-selected, 26K params) 
+  - d=192 wav2vec2 (re-gridded, 648K params)
 
 Produces figures showing whether the attentive mechanism actually learns
 to focus on specific frames, or whether it collapses to near-uniform
-(equivalent to mean pooling). This directly addresses the README's Step 4
-claim: "the attentive mechanism can identify diagnostic regions on
-wav2vec2 but not on mel".
+(equivalent to mean pooling). 
 
-Sampling protocol
------------------
-For each target class we pick ONE representative validation clip (the
-first val-set occurrence, deterministic). Both configs see the SAME
-clip — we load the same audio_ID through the mel pipeline for d=32 and
-through the wav2vec2 pipeline for d=192. Same child, same utterance,
-different input representations.
-
-Output
-------
-  RES_DIR/figures/attn_analysis_compare_<timestamp>.png
-      4-panel figure (one panel per class) showing 5-seed overlayed
-      attention weights for both configs side-by-side.
-
-  RES_DIR/figures/attn_analysis_summary_<timestamp>.png
-      2-panel figure: distribution of per-seed mean-weight-std across
-      the val set. The non-uniformity metric from README's design
-      decisions section. Visually confirms whether attention is
-      non-uniform in practice.
-
-  RES_DIR/results/attn_analysis_<timestamp>.json
-      Per-class, per-config, per-seed mean-weight-std values. Raw data
-      for the figures.
 """
 
 import json
@@ -62,12 +37,6 @@ from data_utils import (
 )
 from models import AttentivePoolingTransformer
 
-
-# ---------------------------------------------------------------------------
-# Canonical checkpoints
-# ---------------------------------------------------------------------------
-
-# d=32 mel (canonical from attn_multiseed_20260416_230142.json, test F1 0.221±0.013)
 D32_MEL_CKPTS = [
     (42,   "/home/renku/work/data/models/transformer_attn_attn_seed42_fold0_20260416_224008.pt"),
     (123,  "/home/renku/work/data/models/transformer_attn_attn_seed123_fold0_20260416_224431.pt"),
@@ -79,7 +48,6 @@ D32_HP = {"d_model": 32, "nhead": 4, "num_layers": 1, "dropout": 0.3}
 D32_F_DIM   = 128
 D32_MAX_LEN = 230
 
-# d=192 wav2vec2 (canonical from attn_multiseed_20260421_000648.json, test F1 0.246±0.016)
 D192_W2V_CKPTS = [
     (42,   "/home/renku/work/data/models/transformer_attn_attn_seed42_fold0_20260420_234541.pt"),
     (123,  "/home/renku/work/data/models/transformer_attn_attn_seed123_fold0_20260420_234958.pt"),
@@ -92,10 +60,6 @@ D192_F_DIM   = 768
 D192_MAX_LEN = 230
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def build_model(f_dim, max_len, hp, use_meta, device):
     return AttentivePoolingTransformer(
         input_dim=f_dim, d_model=hp["d_model"], nhead=hp["nhead"],
@@ -106,23 +70,17 @@ def build_model(f_dim, max_len, hp, use_meta, device):
 
 
 def real_frame_count(audio_id, f_dim, max_len):
-    """Return actual (non-padded) number of frames for this clip."""
     if f_dim == 128:
-        # Mel path — derive from the PNG
         png_path = SPEC_DIR / f"{audio_id}.png"
         spec = load_png(str(png_path), target_height=f_dim)
         return min(spec.shape[1], max_len)
     else:
-        # wav2vec2 path — derive from the npy
         emb_path = PRETRAINED_DIR / f"{audio_id}.npy"
-        emb = np.load(emb_path)  # (768, T)
-        # Real frames = T up to the first all-zero column (if padded) or full T
-        # Most wav2vec2 embeddings are unpadded but cap at max_len
+        emb = np.load(emb_path)  
         return min(emb.shape[1], max_len)
 
 
 def attention_weights_for(model, x, mask, meta, use_meta, device):
-    """Return 1-D numpy array of attention weights (T,) for a single clip."""
     model.eval()
     x_b    = x.unsqueeze(0).to(device)
     mask_b = mask.unsqueeze(0).to(device)
@@ -136,17 +94,6 @@ def attention_weights_for(model, x, mask, meta, use_meta, device):
 
 
 def compute_weight_std(model, loader, use_meta, device):
-    """
-    Mean std of attention weights across all val clips.
-    High std → attention is non-uniform (peaked on specific frames).
-    Low std → near-uniform (equivalent to mean pooling).
-
-    Compare against the "uniform std proxy": if attention were perfectly
-    uniform at w=1/T for each clip, std=0. But for a length distribution
-    with max_len T=230, a uniform-like baseline has tiny std ≈ sqrt(1/T) / T
-    which your training code already prints as ~0.00659 for the d=32 mel
-    runs. Values above that indicate learned non-uniformity.
-    """
     stds = []
     model.eval()
     with torch.no_grad():
@@ -159,9 +106,8 @@ def compute_weight_std(model, loader, use_meta, device):
                 x, mask, _ = batch
                 x = x.to(device); mask = mask.to(device)
                 _, w = model(x, padding_mask=mask)
-            # Per-clip std along time dim, then average
-            # Only include non-padded positions
-            pad = mask  # True = padded
+
+            pad = mask  
             w_np = w.cpu().numpy()
             for i in range(w_np.shape[0]):
                 real = (~pad[i]).sum().item()
@@ -170,7 +116,6 @@ def compute_weight_std(model, loader, use_meta, device):
 
 
 def pick_representative_clips(val_df, n_per_class=1):
-    """For each class, pick the first val example deterministically."""
     picked = {}
     for cname in CLASS_NAMES:
         cls_df = val_df[val_df["class4"] == cname]
@@ -181,10 +126,6 @@ def pick_representative_clips(val_df, n_per_class=1):
     return picked
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 def main():
     device = torch.device(
         "cuda" if torch.cuda.is_available() else
@@ -194,8 +135,6 @@ def main():
 
     cfg.print_config()
 
-    # We need the val split to run analyses on. Both configs use the same
-    # participant-disjoint split.
     df = build_master_table(verbose=False)
     df = df[df["png_exists"]].copy()
     protocol = determine_eval_protocol(df)
@@ -207,7 +146,6 @@ def main():
 
     print(f"\nVal set: {len(val_df)} clips")
 
-    # Pick one representative clip per class
     reps = pick_representative_clips(val_df)
     print("\nRepresentative clips:")
     for cname, row in reps.items():
@@ -216,22 +154,14 @@ def main():
         else:
             print(f"  {cname}: audio_ID={row['audio_ID']}, child={row['child']}")
 
-    # Two datasets — one mel (d=32 config), one wav2vec2 (d=192 config)
-    # Both loaded from val_df containing the same rows.
-    # The USE_PRETRAINED flag inside the Dataset determines which file gets loaded.
-    # Since we can't flip config mid-run without reimporting, we handle this by
-    # temporarily overriding cfg at load time for each config.
-
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     results = {
         "d32_mel":     {"per_class_attn": {}, "weight_stds": {}},
         "d192_w2v":    {"per_class_attn": {}, "weight_stds": {}},
     }
 
-    # ── d=32 mel ──────────────────────────────────────────────────────
     print(f"\n{'='*62}\nConfig 1: d=32, mel spectrogram (F_DIM=128)\n{'='*62}")
 
-    # Temporarily patch config for the mel path
     orig_USE_PRETRAINED = cfg.USE_PRETRAINED
     orig_USE_MFCC       = cfg.USE_MFCC
     orig_F_DIM          = cfg.F_DIM
@@ -239,9 +169,7 @@ def main():
     cfg.USE_PRETRAINED  = False
     cfg.USE_MFCC        = False
     cfg.F_DIM           = 128
-    cfg.USE_SPECAUGMENT = False  # no augmentation at inference
-    # Also patch the module-level globals in data_utils which were imported
-    # from config at import time
+    cfg.USE_SPECAUGMENT = False  
     import data_utils as du
     du.USE_PRETRAINED = False
     du.USE_MFCC = False
@@ -253,7 +181,6 @@ def main():
     val_loader_mel = torch.utils.data.DataLoader(val_ds_mel, batch_size=64,
                                                    shuffle=False)
 
-    # Build index from audio_ID to dataset position for fast lookup
     audio_id_to_idx_mel = {r["audio_ID"]: i for i, r in val_ds_mel.records.iterrows()}
 
     for seed, ckpt_path in D32_MEL_CKPTS:
@@ -261,7 +188,6 @@ def main():
         model.load_state_dict(torch.load(ckpt_path, map_location=device,
                                           weights_only=False))
 
-        # Per-class attention profile on the representative clip
         for cname, row in reps.items():
             if row is None: continue
             idx = audio_id_to_idx_mel[row["audio_ID"]]
@@ -273,13 +199,11 @@ def main():
                 "T_real": int(real),
             }
 
-        # Aggregate weight std across val set
         stds = compute_weight_std(model, val_loader_mel, use_meta, device)
         results["d32_mel"]["weight_stds"][seed] = stds
         print(f"  seed {seed:>5}: mean weight std over val = "
               f"{np.mean(stds):.5f} (median={np.median(stds):.5f})")
 
-    # ── d=192 wav2vec2 ────────────────────────────────────────────────
     print(f"\n{'='*62}\nConfig 2: d=192, wav2vec2 (F_DIM=768)\n{'='*62}")
 
     cfg.USE_PRETRAINED  = True
@@ -319,7 +243,6 @@ def main():
         print(f"  seed {seed:>5}: mean weight std over val = "
               f"{np.mean(stds):.5f} (median={np.median(stds):.5f})")
 
-    # Restore original config state
     cfg.USE_PRETRAINED  = orig_USE_PRETRAINED
     cfg.USE_MFCC        = orig_USE_MFCC
     cfg.F_DIM           = orig_F_DIM
@@ -328,8 +251,6 @@ def main():
     du.USE_MFCC = orig_USE_MFCC
     du.USE_SPECAUGMENT = orig_USE_SPECAUG
 
-    # ── Save raw JSON ─────────────────────────────────────────────────
-    # Convert seed keys (int) to strings for JSON compatibility
     j_results = {
         "d32_mel": {
             "per_class_attn": {c: {str(s): v for s, v in d.items()}
@@ -349,7 +270,6 @@ def main():
         json.dump(j_results, f, indent=2)
     print(f"\nRaw data → {out_json}")
 
-    # ── Figure 1: per-class attention comparison ──────────────────────
     print("\nBuilding figures...")
     n_classes = sum(1 for c in CLASS_NAMES if reps.get(c) is not None)
     fig, axes = plt.subplots(n_classes, 2, figsize=(13, 2.8 * n_classes),
@@ -399,21 +319,17 @@ def main():
     plt.savefig(out_fig1, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Comparison figure → {out_fig1}")
-
-    # ── Figure 2: weight-std distribution summary ─────────────────────
     fig2, axes2 = plt.subplots(1, 2, figsize=(11, 4))
     for ax, (cfg_key, label, color) in zip(
         axes2,
         [("d32_mel",  "d=32, mel",      "steelblue"),
          ("d192_w2v", "d=192, wav2vec2", "darkorange")],
     ):
-        # Aggregate across all seeds
         all_stds = []
         for seed, stds in results[cfg_key]["weight_stds"].items():
             all_stds.extend(stds)
         ax.hist(all_stds, bins=30, color=color, alpha=0.75, edgecolor="black")
-        # Uniform proxy — same across both configs for T=230
-        uniform_std = np.sqrt(1/230) / 230  # tiny
+        uniform_std = np.sqrt(1/230) / 230 
         ax.axvline(np.mean(all_stds), ls="--", color="black", lw=1.2,
                    label=f"mean = {np.mean(all_stds):.5f}")
         ax.set_xlabel("Per-clip attention weight std")
@@ -430,7 +346,6 @@ def main():
     plt.close()
     print(f"Summary figure    → {out_fig2}")
 
-    # ── Printed summary ────────────────────────────────────────────────
     print(f"\n{'='*62}")
     print("ATTENTION ANALYSIS SUMMARY")
     print(f"{'='*62}")

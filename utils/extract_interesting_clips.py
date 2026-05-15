@@ -4,37 +4,9 @@ utils/extract_interesting_clips.py
 Extracts and categorises every test clip based on whether all three
 models agree or disagree, and whether that agreement is correct.
 
-Six agreement categories
--------------------------
-  1. ALL-AGREE-CORRECT   (n_wrong=0, all 3 same correct prediction)
-     All three models predict the right class. Best case.
-
-  2. ALL-AGREE-WRONG     (n_wrong=3, all 3 same wrong prediction)
-     All three models agree on the wrong class. Strongest data-ceiling
-     signal — even consensus is wrong.
-
-  3. ALL-WRONG-DISAGREE  (n_wrong=3, but predictions differ)
-     All three models are wrong but disagree on which wrong class.
-     Even harder — no model has any signal.
-
-  4. LR-CORRECT-TRANSFORMERS-WRONG  (m1 right, m2+m3 wrong)
-     Linear baseline has the advantage.
-
-  5. TRANSFORMERS-CORRECT-LR-WRONG  (m2+m3 right, m1 wrong)
-     Temporal modeling has the advantage.
-
-  6. PARTIAL-DISAGREEMENT
-     Everything else (1 wrong, 2 wrong in various combinations).
-
 Within each category the clips are sorted by true class then by
 confusion pair (true_label → consensus_pred or majority_pred) so you
 can immediately see which confusions are systematic.
-
-Outputs
--------
-  Printed to terminal — full clip-by-clip breakdown per category
-  RES_DIR/results/clip_agreement_<timestamp>.csv — full table
-  RES_DIR/results/clip_agreement_<timestamp>_summary.txt — summary
 
 Usage
 -----

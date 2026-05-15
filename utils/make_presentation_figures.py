@@ -1,22 +1,13 @@
 """
 utils/make_presentation_figures.py
 -----------------------------------
-Generates presentation-grade figures from canonical + extension results.
+Generates figures from canonical + extension results.
 
-Figures produced (all in RES_DIR/figures/presentation/):
-  fig1_complexity_vs_f1.png      — parameter count vs test F1 (with 0.311 star)
-  fig2_perclass_heatmap.png      — per-class F1 heatmap (3 models x 4 classes)
-  fig3_val_vs_test_gap.png       — val vs test F1 paired bars (with Optuna)
-  fig4_inter_language_rates.png  — INTER rate by language + model predictions
-  fig5_optuna_results.png        — NEW: Optuna search outcomes (3-panel)
-
-Extension updates (v2)
-----------------------
-  - LR Mel result updated: 0.277 -> 0.311 (Optuna C=0.00492 line search)
-  - M3 Mel result updated: 0.221 -> 0.233 +/- 0.014 (Optuna 60-trial TPE)
-  - fig1: star marker for Optuna-improved points + new best annotation
-  - fig3: pink bar for Optuna test F1 alongside canonical
-  - fig5: new 3-panel Optuna summary
+  fig1_complexity_vs_f1.png      
+  fig2_perclass_heatmap.png      
+  fig3_val_vs_test_gap.png      
+  fig4_inter_language_rates.png  
+  fig5_optuna_results.png        
 
 Usage
 -----
@@ -34,24 +25,15 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "src"))
 import config as cfg
 
-# ---------------------------------------------------------------------------
-# Canonical + extension numbers
-# Each row: (label, n_params, val_f1, canonical_test_f1, feature, model_id,
-#            optuna_test_f1_or_None)
-# ---------------------------------------------------------------------------
-
 RESULTS = [
-    # Model 1 — Logistic Regression
     ("LR\nMFCC",     (40+1)*4,   0.240, 0.253, "mfcc",     1, None ),
-    ("LR\nMel",      (256+1)*4,  0.232, 0.277, "mel",      1, 0.311),  # Optuna +0.034
+    ("LR\nMel",      (256+1)*4,  0.232, 0.277, "mel",      1, 0.311),  
     ("LR\nwav2vec2", (1536+1)*4, 0.253, 0.263, "wav2vec2", 1, None ),
-    # Model 2 — Mean-Pool Transformer
     ("M2\nMFCC",     None,       0.258, 0.238, "mfcc",     2, None ),
-    ("M2\nMel",      126_000,    0.270, 0.249, "mel",      2, None ),   # no improvement
+    ("M2\nMel",      126_000,    0.270, 0.249, "mel",      2, None ),  
     ("M2\nwav2vec2", 167_000,    0.294, 0.219, "wav2vec2", 2, None ),
-    # Model 3 — Attentive Pooling Transformer
     ("M3\nMFCC",     None,       0.257, 0.237, "mfcc",     3, None ),
-    ("M3\nMel",      26_000,     0.252, 0.221, "mel",      3, 0.233),  # marginal +0.012
+    ("M3\nMel",      26_000,     0.252, 0.221, "mel",      3, 0.233),  
     ("M3\nwav2vec2", 648_000,    0.286, 0.246, "wav2vec2", 3, None ),
 ]
 
@@ -84,9 +66,6 @@ def save(fig, path, dpi=180):
     print(f"  Saved -> {path}")
 
 
-# ---------------------------------------------------------------------------
-# Figure 1 — Complexity vs test F1  (star for 0.311)
-# ---------------------------------------------------------------------------
 def fig1_complexity(out_dir):
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -141,9 +120,6 @@ def fig1_complexity(out_dir):
     plt.close()
 
 
-# ---------------------------------------------------------------------------
-# Figure 2 — Per-class heatmap  (unchanged)
-# ---------------------------------------------------------------------------
 def fig2_heatmap(out_dir):
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -173,9 +149,6 @@ def fig2_heatmap(out_dir):
     plt.close()
 
 
-# ---------------------------------------------------------------------------
-# Figure 3 — Val vs Test gap  (Optuna pink bars added)
-# ---------------------------------------------------------------------------
 def fig3_val_test_gap(out_dir):
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -229,10 +202,6 @@ def fig3_val_test_gap(out_dir):
     save(fig, out_dir / "fig3_val_vs_test_gap.png")
     plt.close()
 
-
-# ---------------------------------------------------------------------------
-# Figure 4 — INTER rate by language  (unchanged)
-# ---------------------------------------------------------------------------
 def fig4_inter_language(out_dir):
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -265,9 +234,6 @@ def fig4_inter_language(out_dir):
     plt.close()
 
 
-# ---------------------------------------------------------------------------
-# Figure 5 — NEW: Optuna search outcomes  (3-panel)
-# ---------------------------------------------------------------------------
 def fig5_optuna_summary(out_dir):
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -275,12 +241,9 @@ def fig5_optuna_summary(out_dir):
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 5.5))
 
-    # Panel A: LR mel line search -- C vs inner-CV F1
     ax = axes[0]
-    # 9-point grid (seeded first by Optuna)
     grid_c  = [1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0, 100.0, 1000.0, 10000.0]
     grid_cv = [0.191,0.196,0.210,0.191,0.184,0.169,0.177,0.164,0.175]
-    # Selected Optuna extra trials
     opt_c  = [0.031,0.013,0.007,0.00492,0.003,0.0066,0.0091,
                0.0065,0.0073,0.0059,0.0034,0.0059,
                0.022,0.010,0.0032,0.0023,0.0040,0.00076]
@@ -303,9 +266,7 @@ def fig5_optuna_summary(out_dir):
     ax.grid(alpha=0.3)
     ax.set_ylim(0.155, 0.225)
 
-    # Panel B: M2 and M3 mel Optuna -- val vs test scatter
     ax = axes[1]
-    # Selected trials from the 60-trial searches
     m2_val  = [0.248,0.300,0.289,0.253,0.281,0.275,0.246,0.244,0.186,0.319,
                 0.244,0.293,0.278,0.330,0.336,0.230,0.279,0.260,0.258,0.277,
                 0.305,0.311,0.278,0.220,0.294,0.294,0.277,0.308,0.284,0.274]
@@ -336,7 +297,6 @@ def fig5_optuna_summary(out_dir):
     ax.legend(fontsize=7.5, loc="lower right")
     ax.grid(alpha=0.3)
 
-    # Panel C: Before/after bar chart
     ax = axes[2]
     names    = ["LR\nMel", "M3\nMel", "M2\nMel"]
     canon    = [0.277,       0.221,     0.249]
@@ -375,9 +335,6 @@ def fig5_optuna_summary(out_dir):
     plt.close()
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--out_dir", type=str, default=None)
