@@ -10,13 +10,6 @@ Key numbers (from the current train.csv, 569 clips, 7 children):
   - Shipibo:    children 1, 3   (142 clips)  INTER = 22.5%  PLTOY = 28.2%
   - Vietnamese: children 7, 8, 9 (282 clips) INTER = 33.0%  PLTOY = 16.7%
 
-Since each child is monolingual (verified), the language effect is
-perfectly confounded with speaker effect. The figure therefore shows
-both "class by language" and flags this confound in the title.
-
-Output
-------
-  RES_DIR/figures/class_by_language_<timestamp>.png
 """
 
 import sys
@@ -45,27 +38,20 @@ def main():
         print(f"  {name}: n={len(df)}, children={df['child'].nunique()}, "
               f"langs={sorted(df['lang'].unique())}")
 
-    # Per-language class distribution in TRAIN (column-normalised)
     ct_col = pd.crosstab(train["class4"], train["lang"], normalize="columns")
-    # Ensure consistent class order
     ct_col = ct_col.reindex(CLASS_NAMES)
-    # Consistent language order (alphabetical is fine but let's hardcode)
     lang_order = ["shipibo", "tagalog", "vietnamese"]
     ct_col = ct_col.reindex(columns=lang_order)
     print("\nTrain column-normalised (within each language):")
     print((ct_col * 100).round(1))
 
-    # Raw counts too, for annotation
     ct_raw = pd.crosstab(train["class4"], train["lang"])
     ct_raw = ct_raw.reindex(CLASS_NAMES).reindex(columns=lang_order)
 
-    # Per-language totals
     lang_totals = {l: int(train[train["lang"] == l].shape[0]) for l in lang_order}
 
-    # Test language reference: where does test child live?
     test_lang = test["lang"].iloc[0]
 
-    # ── Figure: grouped bar chart ──────────────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5.5))
     x = np.arange(len(CLASS_NAMES))
     n_lang = len(lang_order)
@@ -78,7 +64,6 @@ def main():
         bars = ax.bar(x + offset, values, width,
                        label=f"{lang} (n={lang_totals[lang]})",
                        color=colors[lang], edgecolor="black", linewidth=0.6)
-        # Annotate each bar with the raw count and the percentage
         for j, (bar, count) in enumerate(zip(bars, ct_raw[lang].values)):
             ax.text(bar.get_x() + bar.get_width() / 2,
                     bar.get_height() + 1.0,
@@ -86,7 +71,6 @@ def main():
                     ha="center", va="bottom", fontsize=8.5,
                     color="black")
 
-    # Reference line: uniform class distribution
     ax.axhline(25.0, ls="--", color="grey", lw=1.2, alpha=0.7,
                label="Uniform 4-class (25%)")
 
@@ -110,7 +94,6 @@ def main():
     plt.close()
     print(f"\nFigure → {out_path}")
 
-    # ── Print summary numbers for the README ───────────────────────────
     print(f"\n{'='*62}")
     print("KEY CONFOUND NUMBERS (train set)")
     print(f"{'='*62}")

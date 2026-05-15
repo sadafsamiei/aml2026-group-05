@@ -19,19 +19,6 @@ strategies on the same train/test split used by all three models:
 For stratified and uniform we report mean ± std across 1000 random
 seeds to estimate variance.
 
-Expected results
-----------------
-  most_frequent  : macro-F1 ≈ 0.25 / 4 = 0.0625 (only one class F1 > 0)
-  uniform        : macro-F1 ≈ 0.250 (each class gets ~25% recall)
-  stratified     : macro-F1 < 0.250 (biased toward majority class PLTOY)
-
-These numbers let you say precisely: "Our best model (LR mel 0.277)
-outperforms the formal chance baseline (0.250) by +0.027."
-
-Outputs
--------
-RES_DIR/results/chance_baseline_<timestamp>.json
-Printed summary to stdout.
 """
 
 import json
@@ -51,18 +38,11 @@ import config as cfg
 from config import CLASS_NAMES, RESULTS_DIR
 from data_utils import build_master_table, determine_eval_protocol, load_splits
 
-N_SEEDS = 1000   # seeds for stochastic strategies
+N_SEEDS = 1000   
 
 
 def run_dummy(strategy: str, y_train: np.ndarray,
               y_test: np.ndarray, n_seeds: int = N_SEEDS) -> dict:
-    """
-    Fit and score a DummyClassifier.
-
-    For deterministic strategies (most_frequent, prior) a single run is
-    sufficient. For stochastic strategies (uniform, stratified) we run
-    n_seeds times and report mean ± std to quantify their variance.
-    """
     deterministic = strategy in ("most_frequent", "prior")
     seeds = [0] if deterministic else range(n_seeds)
 
@@ -72,7 +52,7 @@ def run_dummy(strategy: str, y_train: np.ndarray,
     for seed in seeds:
         clf = DummyClassifier(strategy=strategy, random_state=seed)
         clf.fit(
-            np.zeros((len(y_train), 1)), y_train   # DummyClassifier ignores X
+            np.zeros((len(y_train), 1)), y_train  
         )
         preds = clf.predict(np.zeros((len(y_test), 1)))
 
@@ -105,7 +85,6 @@ def main():
     print("FORMAL CHANCE-LEVEL BASELINE  (DummyClassifier)")
     print("=" * 60)
 
-    # ── Load the canonical splits ──────────────────────────────────────
     df       = build_master_table(verbose=False)
     protocol = determine_eval_protocol(df)
     folds    = load_splits(protocol)
@@ -123,7 +102,6 @@ def main():
         n = (y_test == c).sum()
         print(f"    {c:<6}: {n:3d}  ({n/len(y_test):.1%})")
 
-    # ── Run three strategies ──────────────────────────────────────────
     print(f"\n  Running DummyClassifier (stratified/uniform: {N_SEEDS} seeds)...")
 
     strategies = ["most_frequent", "stratified", "uniform"]
@@ -132,7 +110,6 @@ def main():
         r = run_dummy(s, y_train, y_test)
         results.append(r)
 
-    # ── Print summary ─────────────────────────────────────────────────
     print(f"\n{'='*60}")
     print(f"CHANCE BASELINE SUMMARY")
     print(f"{'='*60}")
@@ -153,7 +130,6 @@ def main():
     print(f"  Δ vs uniform chance                     : +0.027")
     print(f"{'='*60}")
 
-    # ── Save ──────────────────────────────────────────────────────────
     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = RESULTS_DIR / f"chance_baseline_{ts}.json"
     out  = {

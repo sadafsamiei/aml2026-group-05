@@ -12,21 +12,6 @@ If all three models misclassify the same clips, errors are data-driven
 architecture-driven. If errors are disjoint, the architectures genuinely
 make different trade-offs.
 
-Fix notes vs v1
----------------
-- Neural model JSONs store predictions as integers (0-3) or integer
-  strings; LR JSON stores them as class-name strings. All predictions
-  are now normalised to class-name strings via LABEL_DECODER before
-  comparison.
-- plot_error_by_class column name bug fixed (was looking for 'all3_wrong'
-  column that doesn't exist; now uses n_wrong counts correctly).
-- max_iter bumped to 5000 in LOCO to suppress convergence warnings.
-
-Outputs
--------
-RES_DIR/results/error_analysis_<timestamp>.json   — full per-clip table
-RES_DIR/figures/error_analysis_<timestamp>_overlap.png  — error overlap
-RES_DIR/figures/error_analysis_<timestamp>_by_class.png — error by class
 """
 
 import argparse
@@ -46,10 +31,6 @@ from config import CLASS_NAMES, FIGURES_DIR, LABEL_DECODER, RESULTS_DIR
 from data_utils import build_master_table, determine_eval_protocol, load_splits
 
 
-# ---------------------------------------------------------------------------
-# JSON auto-detection
-# ---------------------------------------------------------------------------
-
 def latest_json(pattern: str) -> Path:
     matches = sorted(RESULTS_DIR.glob(pattern),
                      key=lambda p: p.stat().st_mtime, reverse=True)
@@ -62,21 +43,12 @@ def latest_json(pattern: str) -> Path:
 
 
 def normalise_labels(arr) -> np.ndarray:
-    """
-    Convert an array of predictions/labels to CLASS_NAME strings.
 
-    Neural model JSONs may store integer labels (0, 1, 2, 3) or
-    integer-valued strings ('0', '1', '2', '3'). LR JSONs store
-    class-name strings ('EXTEV', 'INTER', 'MOVE', 'PLTOY').
-    This function normalises all three formats to class-name strings
-    so that cross-model comparison is always apples-to-apples.
-    """
     result = []
     for v in arr:
         if isinstance(v, str) and v in CLASS_NAMES:
             result.append(v)
         else:
-            # Try integer or integer-string lookup via LABEL_DECODER
             try:
                 result.append(LABEL_DECODER[int(v)])
             except (KeyError, ValueError):
@@ -85,10 +57,6 @@ def normalise_labels(arr) -> np.ndarray:
 
 
 def load_seed0_preds(json_path: Path, seed_index: int = 0) -> tuple:
-    """
-    Return (preds, labels) as normalised class-name string arrays
-    for the given seed index.
-    """
     with open(json_path) as f:
         data = json.load(f)
 
@@ -110,12 +78,7 @@ def load_seed0_preds(json_path: Path, seed_index: int = 0) -> tuple:
     return preds, labels
 
 
-# ---------------------------------------------------------------------------
-# Plots
-# ---------------------------------------------------------------------------
-
 def plot_overlap(sets: dict, n_total: int, save_path: Path):
-    """Bar chart of error overlap categories."""
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -167,10 +130,7 @@ def plot_overlap(sets: dict, n_total: int, save_path: Path):
 
 
 def plot_error_by_class(error_df: pd.DataFrame, save_path: Path):
-    """
-    Grouped bar chart: for each true class, how many clips are wrong by
-    3 / 2 / 1 / 0 models.
-    """
+
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -215,10 +175,6 @@ def plot_error_by_class(error_df: pd.DataFrame, save_path: Path):
         print(f"Class error plot failed: {e}")
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 def parse_args():
     p = argparse.ArgumentParser(
         description="Error analysis across all three models on mel features.")
@@ -241,13 +197,10 @@ def main():
     print("ERROR ANALYSIS — Model 1 / 2 / 3 on mel features")
     print("=" * 60)
 
-    # ── Locate JSON files ─────────────────────────────────────────────
     m1_path = Path(args.m1_json) if args.m1_json else \
               latest_json("lr_baseline_mel_multiseed_*.json")
 
-    # For M2 and M3 we need the MEL runs specifically.
-    # auto-detect picks most-recent; user should override with --m2_json
-    # if the most-recent audio/attn JSON is a wav2vec2 run.
+
     m2_path = Path(args.m2_json) if args.m2_json else \
               latest_json("audio_multiseed_*.json")
     m3_path = Path(args.m3_json) if args.m3_json else \
@@ -258,7 +211,6 @@ def main():
     print(f"  Model 3 JSON : {m3_path.name}")
     print(f"  Seed index   : {args.seed_index}")
 
-    # ── Load and normalise predictions ────────────────────────────────
     print("\n[1/3] Loading and normalising predictions...")
     m1_preds, labels = load_seed0_preds(m1_path, args.seed_index)
     m2_preds, _      = load_seed0_preds(m2_path, args.seed_index)
@@ -269,7 +221,6 @@ def main():
     assert len(m2_preds) == n, f"M2 preds {len(m2_preds)} ≠ labels {n}"
     assert len(m3_preds) == n, f"M3 preds {len(m3_preds)} ≠ labels {n}"
 
-    # Verify normalisation worked
     for name, arr in [("M1 preds", m1_preds), ("M2 preds", m2_preds),
                       ("M3 preds", m3_preds), ("labels",   labels)]:
         unknown = [v for v in arr if v not in CLASS_NAMES]
@@ -283,14 +234,12 @@ def main():
     print(f"  M2 pred sample: {m2_preds[:5].tolist()}")
     print(f"  M3 pred sample: {m3_preds[:5].tolist()}")
 
-    # ── Load test metadata ────────────────────────────────────────────
     df       = build_master_table(verbose=False)
     protocol = determine_eval_protocol(df)
     folds    = load_splits(protocol)
     _, _, test_df = folds[0]
     test_df = test_df.reset_index(drop=True)
 
-    # ── Build per-clip table ──────────────────────────────────────────
     print("\n[2/3] Building error table...")
 
     m1_wrong = (m1_preds != labels)
@@ -314,7 +263,6 @@ def main():
         "n_wrong":    n_wrong,
     })
 
-    # ── Error overlap sets ────────────────────────────────────────────
     idx_m1 = set(np.where(m1_wrong)[0])
     idx_m2 = set(np.where(m2_wrong)[0])
     idx_m3 = set(np.where(m3_wrong)[0])
@@ -331,7 +279,6 @@ def main():
         "any_wrong":   idx_m1 | idx_m2 | idx_m3,
     }
 
-    # ── Print summary ─────────────────────────────────────────────────
     all3_df            = error_df[error_df["n_wrong"] == 3]
     data_ceiling_pct   = len(sets["all3"]) / n * 100
 
@@ -375,7 +322,6 @@ def main():
                   f"(n={row['count']})")
     print(f"{'='*60}")
 
-    # ── Save ──────────────────────────────────────────────────────────
     ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
     tag = f"error_analysis_{ts}"
 
@@ -401,7 +347,6 @@ def main():
         json.dump(out, f, indent=2, default=str)
     print(f"\nResults → {result_path}")
 
-    # ── Plots ─────────────────────────────────────────────────────────
     print("\n[3/3] Plotting...")
     plot_overlap(sets, n, FIGURES_DIR / f"{tag}_overlap.png")
     plot_error_by_class(error_df, FIGURES_DIR / f"{tag}_by_class.png")

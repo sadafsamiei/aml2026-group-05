@@ -7,14 +7,10 @@ Replaces the discrete grid search with an N-trial TPE study that searches
 CONTINUOUSLY over lr, dropout_encoder, dropout_head, dropout_input and
 CATEGORICALLY over d_model, num_layers.
 
-IMPORTANT — Feature type is controlled by config.py, NOT by --features.
 Before running:
   mel non-pretrained  → USE_PRETRAINED=False, USE_MFCC=False  in config.py
   wav2vec2 pretrained → USE_PRETRAINED=True,  USE_MFCC=False  in config.py
   MFCC                → USE_PRETRAINED=False, USE_MFCC=True   in config.py
-
-The --features flag is only used for labelling the output file. The script
-prints a warning if --features doesn't match the active config.py flags.
 
 Usage
 -----
@@ -23,10 +19,6 @@ Usage
 
     python experiments/optuna_search.py --model attn  --features wav2vec2 \
         --n_trials 60 --use_existing_splits
-
-Outputs
--------
-    RES_DIR/results/optuna_search_{model}_{features}_{timestamp}.json
 """
 
 import argparse

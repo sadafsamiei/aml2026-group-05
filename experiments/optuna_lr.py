@@ -5,12 +5,10 @@ Uses the same inner LOPO CV as the original train_lr_baseline.py.
 
 Feature path resolution
 -----------------------
-- mel       → row["png_path"]                       (always present in master table)
-- mfcc      → MFCC_DIR / f"{row['audio_ID']}.npy"   (built from audio_ID)
-- wav2vec2  → PRETRAINED_DIR / f"{row['audio_ID']}.npy"  (built from audio_ID)
+- mel      
+- mfcc      
+- wav2vec2  
 
-The mfcc and wav2vec2 paths are NOT columns in the master table — they are
-constructed from `audio_ID` + the directory constants in config.py.
 """
 import sys, json
 from pathlib import Path
@@ -36,18 +34,7 @@ from config import (
 from data_utils import build_master_table, determine_eval_protocol, load_splits
 
 
-# ── Feature extraction ──────────────────────────────────────────────────
-
 def extract_features(df, feature="mel"):
-    """
-    Extract mean+std summary features per clip.
-
-    For mel: read PNG from row["png_path"], compute mean/std along time axis.
-    For mfcc: load MFCC_DIR/{audio_ID}.npy with shape (20, T), pool over time.
-    For wav2vec2: load PRETRAINED_DIR/{audio_ID}.npy with shape (768, T), pool over time.
-
-    Both .npy files are stored as (F, T) — pool along axis=1 (time).
-    """
     from PIL import Image
 
     X, y, groups = [], [], []
@@ -58,7 +45,7 @@ def extract_features(df, feature="mel"):
         try:
             if feature == "mel":
                 img = np.array(Image.open(row["png_path"]).convert("L"),
-                               dtype=np.float32) / 255.0   # (F, T)
+                               dtype=np.float32) / 255.0  
                 feat = np.concatenate([img.mean(axis=1), img.std(axis=1)])
 
             elif feature == "mfcc":
@@ -66,7 +53,7 @@ def extract_features(df, feature="mel"):
                 if not npy_path.exists():
                     n_skipped_missing += 1
                     continue
-                arr = np.load(npy_path)                       # (20, T)
+                arr = np.load(npy_path)                      
                 feat = np.concatenate([arr.mean(axis=1), arr.std(axis=1)])
 
             elif feature == "wav2vec2":
@@ -74,7 +61,7 @@ def extract_features(df, feature="mel"):
                 if not npy_path.exists():
                     n_skipped_missing += 1
                     continue
-                arr = np.load(npy_path)                       # (768, T)
+                arr = np.load(npy_path)                      
                 feat = np.concatenate([arr.mean(axis=1), arr.std(axis=1)])
 
             else:
@@ -98,7 +85,6 @@ def extract_features(df, feature="mel"):
 
 
 def inner_lopo_cv(X, y, groups, C):
-    """Inner LOPO CV — same protocol as the original training script."""
     logo = LeaveOneGroupOut()
     scores = []
     for train_idx, val_idx in logo.split(X, y, groups):
@@ -158,7 +144,6 @@ def main():
     def objective(trial):
         C = trial.suggest_float("C", 1e-6, 1e+6, log=True)
         score = inner_lopo_cv(X_train, y_train, groups, C)
-        # Fit on full train and evaluate val+test for logging
         pipe = Pipeline([
             ("scaler", StandardScaler()),
             ("lr", LogisticRegression(
@@ -177,13 +162,12 @@ def main():
         print(f"  Trial {trial.number:3d}/{args.n_trials}"
               f"  C={C:.5f}  inner_cv={score:.4f}"
               f"  val={val_f1:.4f}  test={test_f1:.4f}")
-        return score   # optimise inner CV score (same as original)
+        return score   
 
     study = optuna.create_study(
         direction="maximize",
         sampler=optuna.samplers.TPESampler(seed=RANDOM_SEED),
     )
-    # Seed with your 9 canonical grid points so Optuna starts informed
     for C_init in np.logspace(-4, 4, 9):
         study.enqueue_trial({"C": float(C_init)})
 
@@ -225,7 +209,7 @@ def main():
         "best_val_f1": best_val,
         "best_test_f1": best_test,
         "original_grid_test_f1": canonical_test,
-        "all_trials": all_trials[:20],   # top 20
+        "all_trials": all_trials[:20],  
     }
     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = RESULTS_DIR / f"optuna_lr_{args.features}_{ts}.json"

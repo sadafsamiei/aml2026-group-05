@@ -10,16 +10,6 @@ Our canonical results come from a single fixed holdout (child_6 as test).
 LOCO answers whether 0.277 is representative by rotating which child is
 held out across all 9 folds and averaging macro-F1.
 
-Fix notes vs v1
----------------
-max_iter raised from 2000 → 5000 to suppress convergence warnings that
-appeared for large C values (C ≥ 10) when using all 8 training children.
-The warnings were cosmetic (lbfgs was close to convergence) but noisy.
-
-Outputs
--------
-RES_DIR/results/loco_model1_mel_<timestamp>.json
-RES_DIR/figures/loco_model1_mel_<timestamp>_per_fold.png
 """
 
 import json
@@ -47,10 +37,6 @@ C_GRID   = np.logspace(-4, 4, 9)
 MAX_ITER = 5000   # raised from 2000 to suppress convergence warnings
 
 
-# ---------------------------------------------------------------------------
-# Feature extraction
-# ---------------------------------------------------------------------------
-
 def extract_mel_summary(audio_id: str) -> np.ndarray:
     png_path = SPEC_DIR / f"{audio_id}.png"
     spec = load_png(str(png_path), target_height=128, target_width=230)
@@ -77,15 +63,7 @@ def build_feature_matrix(df: pd.DataFrame) -> np.ndarray:
     return np.vstack(feats)
 
 
-# ---------------------------------------------------------------------------
-# LOCO split builder
-# ---------------------------------------------------------------------------
-
 def build_loco_folds(df: pd.DataFrame) -> list:
-    """
-    9 folds, one per child. Test = held-out child, val = next child by
-    size (wrapping), train = remaining 7 children.
-    """
     children = (df.groupby("child").size()
                   .sort_values(ascending=False).index.tolist())
     n = len(children)
@@ -102,11 +80,6 @@ def build_loco_folds(df: pd.DataFrame) -> list:
             val_child,
         ))
     return folds
-
-
-# ---------------------------------------------------------------------------
-# Per-fold run
-# ---------------------------------------------------------------------------
 
 def run_fold(X_train, y_train, groups_train,
              X_val, y_val,
@@ -128,7 +101,6 @@ def run_fold(X_train, y_train, groups_train,
     grid.fit(X_train, y_train, groups=groups_train)
     best_C = float(grid.best_params_["logreg__C"])
 
-    # Val: refit on train alone
     val_pipe = Pipeline([
         ("scaler", StandardScaler()),
         ("logreg", LogisticRegression(
@@ -141,7 +113,6 @@ def run_fold(X_train, y_train, groups_train,
     val_f1    = f1_score(y_val, val_preds, average="macro",
                           labels=CLASS_NAMES, zero_division=0)
 
-    # Test: refit on train + val
     X_tv = np.vstack([X_train, X_val])
     y_tv = np.concatenate([y_train, y_val])
     test_pipe = Pipeline([
@@ -174,11 +145,6 @@ def run_fold(X_train, y_train, groups_train,
         "n_test":            len(y_test),
     }
 
-
-# ---------------------------------------------------------------------------
-# Plot
-# ---------------------------------------------------------------------------
-
 def plot_per_fold(fold_results: list, mean_f1: float, std_f1: float,
                   canonical_f1: float, save_path: Path):
     try:
@@ -192,7 +158,6 @@ def plot_per_fold(fold_results: list, mean_f1: float, std_f1: float,
 
         fig, ax = plt.subplots(figsize=(11, 5))
 
-        # colour bars by language for visual clarity
         lang_colors = {"tagalog": "#EF9A9A", "shipibo": "#90CAF9",
                        "vietnamese": "#FFB74D"}
 
@@ -221,7 +186,6 @@ def plot_per_fold(fold_results: list, mean_f1: float, std_f1: float,
         ax.axhline(0.250, ls=":", color="grey", lw=1.4,
                    label="Chance = 0.250")
 
-        # Language legend patches
         from matplotlib.patches import Patch
         legend_patches = [Patch(color=v, label=k.capitalize())
                           for k, v in lang_colors.items()]
@@ -250,10 +214,6 @@ def plot_per_fold(fold_results: list, mean_f1: float, std_f1: float,
         print(f"Plot failed: {e}")
         import traceback; traceback.print_exc()
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main():
     cfg.print_config()
@@ -312,7 +272,6 @@ def main():
 
     CANONICAL_F1 = 0.277
 
-    # Language lookup for display
     child_lang = df.groupby("child")["lang"].first().to_dict()
 
     print(f"\n{'='*60}")

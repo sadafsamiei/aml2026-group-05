@@ -1,7 +1,6 @@
 """
 scripts/ensemble_seeds.py
 -------------------------
-Ensemble the 5 per-seed checkpoints for Models 2 and 3 on wav2vec2.
 
 For each model:
   1. Load the 5 per-seed checkpoints.
@@ -10,19 +9,6 @@ For each model:
   4. Compute macro-F1, per-class F1, confusion matrix.
   5. Also record the per-seed individual test F1 for comparison.
 
-Canonical checkpoints (hard-coded because we want to be exact about WHICH
-checkpoints are the "canonical" ones per the current README). If any of
-these paths go stale, update them here — do not take a more recent file
-from the same seed by accident.
-
-Assumes USE_PRETRAINED = True in config.py (wav2vec2 path). If it isn't
-the test dataset will load mel spectrograms instead and everything
-breaks silently. Asserts this at the top.
-
-Outputs
--------
-  RES_DIR/results/ensemble_wav2vec2_<timestamp>.json
-      Aggregated ensemble metrics for both models.
 """
 
 import json
@@ -52,12 +38,7 @@ from data_utils import (
 from models import AudioTransformer, AttentivePoolingTransformer
 
 
-# ---------------------------------------------------------------------------
-# Canonical checkpoints — update here if the canonical runs change
-# ---------------------------------------------------------------------------
-
 MODEL2_CKPTS = [
-    # (seed, path) — all d=64, L=2, drop=0.5, from 2026-04-21 multiseed run
     (42,   "/home/renku/work/data/models/transformer_audio_audio_seed42_fold0_20260421_121308.pt"),
     (123,  "/home/renku/work/data/models/transformer_audio_audio_seed123_fold0_20260421_122138.pt"),
     (456,  "/home/renku/work/data/models/transformer_audio_audio_seed456_fold0_20260421_122957.pt"),
@@ -68,7 +49,6 @@ MODEL2_CKPTS = [
 MODEL2_HPARAMS = {"d_model": 64, "nhead": 4, "num_layers": 2, "dropout": 0.5}
 
 MODEL3_CKPTS = [
-    # (seed, path) — all d=192, L=1, drop=0.3, from 2026-04-20/21 multiseed run
     (42,   "/home/renku/work/data/models/transformer_attn_attn_seed42_fold0_20260420_234541.pt"),
     (123,  "/home/renku/work/data/models/transformer_attn_attn_seed123_fold0_20260420_234958.pt"),
     (456,  "/home/renku/work/data/models/transformer_attn_attn_seed456_fold0_20260420_235421.pt"),
@@ -78,10 +58,6 @@ MODEL3_CKPTS = [
 
 MODEL3_HPARAMS = {"d_model": 192, "nhead": 4, "num_layers": 1, "dropout": 0.3}
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def get_test_probs(model, loader, device, use_meta: bool) -> tuple:
     """Run model on loader, return (probs, labels) as numpy arrays."""
@@ -119,10 +95,6 @@ def metrics_from_preds(preds, labels) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Model constructors (factored out so each seed rebuilds fresh)
-# ---------------------------------------------------------------------------
-
 def build_model2(f_dim, max_len, device):
     return AudioTransformer(
         input_dim=f_dim, d_model=MODEL2_HPARAMS["d_model"],
@@ -142,10 +114,6 @@ def build_model3(f_dim, max_len, device, use_meta: bool):
     ).to(device)
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 def main():
     assert cfg.USE_PRETRAINED, \
         "USE_PRETRAINED must be True in config.py for the wav2vec2 ensemble"
@@ -157,7 +125,6 @@ def main():
     )
     print(f"\nDevice: {device}")
 
-    # Data & splits
     print("\n[1/4] Loading test split...")
     df = build_master_table(verbose=False)
     df = df[df["png_exists"]].copy()
@@ -169,12 +136,10 @@ def main():
     max_len = cfg.MAX_LEN
     print(f"  Test n = {len(test_df)}, f_dim = {f_dim}, max_len = {max_len}")
 
-    # Metadata stats (needed for Model 3)
     meta_check = check_metadata_viability(df, verbose=False)
     use_meta   = meta_check["USE_EXTERNAL_META"]
     meta_stats = compute_meta_stats(train_df)
 
-    # Build test loaders — one without meta (Model 2), one with meta (Model 3)
     test_ds_audio = SpectrogramDataset(test_df, LABEL_ENCODER, max_len, f_dim,
                                         train=False)
     test_ds_attn  = MetadataSpectrogramDataset(
@@ -185,7 +150,6 @@ def main():
 
     results = {}
 
-    # ── Model 2 ───────────────────────────────────────────────────────
     print("\n[2/4] Running Model 2 (audio, mean pool) ensemble...")
     probs_by_seed_m2 = []
     per_seed_m2 = []
@@ -225,7 +189,6 @@ def main():
         "ensemble_cm_rownorm": m2_metrics["confusion_matrix_rownorm"],
     }
 
-    # ── Model 3 ───────────────────────────────────────────────────────
     print("\n[3/4] Running Model 3 (attn pool, d=192) ensemble...")
     probs_by_seed_m3 = []
     per_seed_m3 = []
@@ -265,7 +228,6 @@ def main():
         "ensemble_cm_rownorm": m3_metrics["confusion_matrix_rownorm"],
     }
 
-    # ── Save & print summary ───────────────────────────────────────────
     print("\n[4/4] Saving results...")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = RESULTS_DIR / f"ensemble_wav2vec2_{timestamp}.json"
