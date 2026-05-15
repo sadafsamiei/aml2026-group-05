@@ -1,7 +1,6 @@
 # configs/model/attn_wav2vec2.yaml
 # ──────────────────────────────────────────────────────────────────────────
 # Model 3 (AttentivePoolingTransformer, external metadata) — wav2vec2
-# Manually selected winner from 8-config grid search (val F1 = 0.297).
 # Note: numerical top-1 config showed lucky initialisation and did not
 # reproduce. This is the 3rd-ranked config with sustained learning.
 # ──────────────────────────────────────────────────────────────────────────
