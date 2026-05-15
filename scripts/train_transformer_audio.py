@@ -4,14 +4,13 @@ train_transformer_audio.py
 Model 2: Audio-only Transformer with mean pooling (neural baseline).
 
 Usage:
-    python scripts/train_transformer_audio.py               # default: full preset
+    python scripts/train_transformer_audio.py               
     python scripts/train_transformer_audio.py --preset small
     python scripts/train_transformer_audio.py --d_model 128 --num_layers 3
     python scripts/train_transformer_audio.py --grid_search
     python scripts/train_transformer_audio.py --use_existing_splits
 
-Inputs  : DATA_DIR/spectrograms/, DATA_DIR/contextsvocs_*.csv
-Outputs : RES_DIR/models/, RES_DIR/results/, RES_DIR/figures/
+
 """
 
 import argparse
@@ -45,9 +44,6 @@ from train_utils import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Plotting helpers
-# ---------------------------------------------------------------------------
 
 def plot_training_history(history, save_path, title="", n_present_classes=None):
     try:
@@ -109,9 +105,6 @@ def plot_confusion_matrix(preds, labels, save_path, title=""):
         print("matplotlib not available — skipping confusion matrix")
 
 
-# ---------------------------------------------------------------------------
-# Result interpretation
-# ---------------------------------------------------------------------------
 
 def print_fold_interpretation(fold_results, n_present_classes):
     vals   = [r["val_macro_f1"]  for r in fold_results]
@@ -140,9 +133,6 @@ def print_fold_interpretation(fold_results, n_present_classes):
     print(f"{'='*55}")
 
 
-# ---------------------------------------------------------------------------
-# Single run (all folds)
-# ---------------------------------------------------------------------------
 
 def run_single(folds, f_dim, max_len, hparams, device, run_tag="single"):
     cfg.make_output_dirs()
@@ -199,8 +189,7 @@ def run_single(folds, f_dim, max_len, hparams, device, run_tag="single"):
             model.print_architecture()
             sanity_check_forward(model, f_dim, max_len, N_CLASSES, device)
 
-        # Label smoothing is pulled from hparams; defaults to 0.0 if absent,
-        # making old hparam dicts bit-compatible with this script.
+
         criterion = torch.nn.CrossEntropyLoss(
             weight=train_ds.class_weights().to(device),
             label_smoothing=hparams.get("label_smoothing", 0.0),
@@ -289,9 +278,6 @@ def run_single(folds, f_dim, max_len, hparams, device, run_tag="single"):
     return summary
 
 
-# ---------------------------------------------------------------------------
-# Grid search
-# ---------------------------------------------------------------------------
 
 def run_grid_search(folds, f_dim, max_len, device):
     print(f"\n{'='*55}")
@@ -305,7 +291,6 @@ def run_grid_search(folds, f_dim, max_len, device):
         print(f"\nConfig {i+1}/{len(HPARAM_GRID)}: {hp}")
         result = run_single(folds[:1], f_dim, max_len, hp_full, device,
                             run_tag=f"grid_{i}")
-        # Capture best_epoch for overfitting diagnosis in the grid report
         fold0 = result["fold_results"][0]
         best_epoch = (fold0["history"]["val_f1"].index(
             max(fold0["history"]["val_f1"])) + 1) if fold0.get("history") else None
@@ -340,10 +325,6 @@ def run_grid_search(folds, f_dim, max_len, device):
     print(f"\nBest: {grid_results[0]['hparams']} — re-training on all folds...")
     return run_single(folds, f_dim, max_len, best_hp, device, run_tag="best")
 
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 def parse_args():
     p = argparse.ArgumentParser(description="Train audio-only Transformer (Model 2)")
@@ -390,7 +371,6 @@ def main():
         val = getattr(args, key, None)
         if val is not None:
             hparams[key] = val
-    # Ensure label_smoothing has a default even if absent from the preset
     hparams.setdefault("label_smoothing", 0.0)
 
     print(f"\nHyperparameters (preset='{args.preset}'):")

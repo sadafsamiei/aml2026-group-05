@@ -37,12 +37,6 @@ Config layout
       training/
         default.yaml         ← shared training settings
 
-Hydra will look for configs relative to the project root
-(or wherever you set --config-path).
-
-Requirements
-------------
-    pip install hydra-core omegaconf
 """
 
 import sys
@@ -75,16 +69,11 @@ from models import AudioTransformer, AttentivePoolingTransformer
 from train_utils import train_model, evaluate, save_results
 
 
-# ---------------------------------------------------------------------------
-# Build model from Hydra config
-# ---------------------------------------------------------------------------
-
 def build_model(model_cfg: DictConfig, f_dim: int, max_len: int) -> torch.nn.Module:
     """Instantiate the correct model class from the Hydra model config."""
     features = model_cfg.get("features", "mel")
     is_attn  = model_cfg.get("use_external_meta", False)
 
-    # Resolve dropout rates with v1-compatible defaults
     d_enc   = model_cfg.get("dropout_encoder", 0.3)
     d_input = model_cfg.get("dropout_input",   0.0)
     d_head  = model_cfg.get("dropout_head",    0.3)
@@ -119,13 +108,8 @@ def build_model(model_cfg: DictConfig, f_dim: int, max_len: int) -> torch.nn.Mod
         )
 
 
-# ---------------------------------------------------------------------------
-# Single training run (one seed, all folds)
-# ---------------------------------------------------------------------------
-
 def run_single_hydra(model_cfg: DictConfig, train_cfg: DictConfig,
                      folds, f_dim: int, max_len: int, device):
-    """Train the Hydra-configured model on all folds."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     features  = model_cfg.get("features", "mel")
     model_tag = "attn" if model_cfg.get("use_external_meta", False) else "audio"
@@ -199,22 +183,14 @@ def run_single_hydra(model_cfg: DictConfig, train_cfg: DictConfig,
     save_results(summary, RESULTS_DIR / f"{model_tag}_{features}_seed{train_cfg.seed}_{timestamp}.json")
     return summary
 
-
-# ---------------------------------------------------------------------------
-# Hydra entry point
-# ---------------------------------------------------------------------------
-
 @hydra.main(config_path="../configs/model", config_name="audio_mel",
             version_base=None)
 def main(model_cfg: DictConfig):
-    """Main entry point — Hydra injects the model config automatically."""
 
-    # Load the training config separately (not composed for simplicity)
     from omegaconf import OmegaConf
     train_cfg_path = Path(__file__).parent.parent / "configs" / "training" / "default.yaml"
     train_cfg = OmegaConf.load(train_cfg_path)
 
-    # Apply seed
     seed = int(train_cfg.seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -235,7 +211,6 @@ def main(model_cfg: DictConfig):
     )
     print(f"\nDevice: {device}")
 
-    # ── Data ────────────────────────────────────────────────────────────
     print("\n[1/3] Building master table...")
     df = build_master_table(verbose=True)
     df = df[df["png_exists"]].copy()
@@ -249,7 +224,6 @@ def main(model_cfg: DictConfig):
     protocol = determine_eval_protocol(df)
     folds    = build_splits(df, protocol, save=True)
 
-    # ── Train ────────────────────────────────────────────────────────────
     result = run_single_hydra(model_cfg, train_cfg, folds, f_dim, max_len, device)
 
     print(f"\n── Final result ──")

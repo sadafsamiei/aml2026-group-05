@@ -11,7 +11,6 @@ of mean pooling. The query source is determined automatically:
 
 Usage:
     python scripts/train_transformer_attn.py
-    python scripts/train_transformer_attn.py --baseline_test_f1 0.XX
     python scripts/train_transformer_attn.py --grid_search
     python scripts/train_transformer_attn.py --use_existing_splits
 """
@@ -48,9 +47,6 @@ from train_utils import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Plotting
-# ---------------------------------------------------------------------------
 
 def plot_training_history(history, save_path, title="", n_present_classes=None):
     try:
@@ -114,7 +110,6 @@ def plot_confusion_matrix(preds, labels, save_path, title=""):
 
 def plot_attention_weights(model, val_df, label_encoder, max_len, f_dim,
                            device, use_meta, meta_stats, save_path):
-    """Visualise per-class attention weight profiles for one example each."""
     try:
         import matplotlib; matplotlib.use("Agg")
         import matplotlib.pyplot as plt
@@ -165,10 +160,6 @@ def plot_attention_weights(model, val_df, label_encoder, max_len, f_dim,
         print(f"Attention plot skipped: {e}")
 
 
-# ---------------------------------------------------------------------------
-# Result interpretation
-# ---------------------------------------------------------------------------
-
 def print_fold_interpretation(fold_results, n_present_classes, baseline_f1=None):
     vals   = [r["val_macro_f1"]  for r in fold_results]
     tests  = [r["test_macro_f1"] for r in fold_results]
@@ -202,10 +193,6 @@ def print_fold_interpretation(fold_results, n_present_classes, baseline_f1=None)
               f"{r['test_macro_f1']:>7.3f} {gap:>+7.3f}  {note}")
     print(f"{'='*55}")
 
-
-# ---------------------------------------------------------------------------
-# Single run (all folds)
-# ---------------------------------------------------------------------------
 
 def run_single(folds, f_dim, max_len, hparams, device,
                use_meta, meta_stats_per_fold,
@@ -270,8 +257,6 @@ def run_single(folds, f_dim, max_len, hparams, device,
             sanity_check_forward(model, f_dim, max_len, N_CLASSES, device,
                                  use_meta=use_meta)
 
-        # Label smoothing pulled from hparams; defaults to 0.0 for backward
-        # compatibility with existing hparam dicts that don't include it.
         criterion = torch.nn.CrossEntropyLoss(
             weight=train_ds.class_weights().to(device),
             label_smoothing=hparams.get("label_smoothing", 0.0),
@@ -313,7 +298,6 @@ def run_single(folds, f_dim, max_len, hparams, device,
                               FIGURES_DIR / f"cm_test_{fold_tag}.png",
                               title=f"Test — Fold {fold_i} (Attentive)")
 
-        # Attention weight analysis
         if "attn_weights" in val_result:
             attn_stats = analyse_attention_weights(val_result["attn_weights"])
             print(f"\n  Attention stats (val):")
@@ -382,10 +366,6 @@ def run_single(folds, f_dim, max_len, hparams, device,
     return summary
 
 
-# ---------------------------------------------------------------------------
-# Grid search
-# ---------------------------------------------------------------------------
-
 def run_grid_search(folds, f_dim, max_len, device,
                     use_meta, meta_stats_per_fold):
     print(f"\n{'='*55}")
@@ -399,7 +379,6 @@ def run_grid_search(folds, f_dim, max_len, device,
         result = run_single(folds[:1], f_dim, max_len, hp_full, device,
                             use_meta, meta_stats_per_fold[:1],
                             run_tag=f"grid_{i}")
-        # Capture overfitting diagnostic info per config
         fold0 = result["fold_results"][0]
         best_epoch = (fold0["history"]["val_f1"].index(
             max(fold0["history"]["val_f1"])) + 1) if fold0.get("history") else None
@@ -431,10 +410,6 @@ def run_grid_search(folds, f_dim, max_len, device,
     return run_single(folds, f_dim, max_len, best_hp, device,
                       use_meta, meta_stats_per_fold, run_tag="best")
 
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 def parse_args():
     p = argparse.ArgumentParser(description="Train Attentive Pooling Transformer (Model 3)")

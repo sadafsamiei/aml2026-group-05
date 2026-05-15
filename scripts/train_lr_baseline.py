@@ -21,47 +21,8 @@ Supports THREE feature sources for direct comparison with Models 2 and 3:
 
 The pipeline is identical across feature sources: StandardScaler →
 LogisticRegression(class_weight='balanced'). The only thing that changes
-is the input vector. This makes Model 1 directly comparable to Models 2/3
-within each feature column of the results table.
+is the input vector.
 
-Pipeline
---------
-1. Build the feature matrix per feature source. Each row is a clip-level
-   summary vector (time axis collapsed to per-dimension statistics).
-   Per-clip features are cached in RES_DIR/lr_features_<tag>/<id>.npy
-   so re-runs are fast.
-
-2. Use the project's canonical participant-disjoint splits (loaded
-   from RES_DIR/splits) so Model 1 numbers are directly comparable to
-   Models 2 and 3 (same train/val/test children).
-
-3. Inside each fold (1 fold for the holdout protocol), select the LR
-   inverse-regularization strength C via inner LeaveOneGroupOut CV
-   over the seven training children. Then refit on train alone (for
-   val reporting) and on train+val (for test reporting).
-
-4. Multi-seed (5 seeds) for variance estimation, even though LR with
-   the lbfgs solver is mostly deterministic given the data.
-
-Notes
------
-- Mel summary uses ALL 230 frames per PNG, including padding rows for
-  shorter clips. Padding contaminates the mean/std but is consistent
-  with how Model 2/3 see the data, so for fair comparison we keep it.
-  An alternative would be to mask non-zero frames; we chose
-  consistency over a small statistical purity gain.
-- wav2vec2 .npy files are stored at shape (768, T) where T is the
-  per-clip frame count after wav2vec2 striding. We compute stats over
-  the actual frames (no padding involved here — the .npy files are
-  per-clip, not pre-padded).
-- For mfcc, we read from raw WAV and compute MFCCs on the fly. This
-  avoids padding contamination because we use only the real audio
-  samples.
-
-Outputs
--------
-RES_DIR/results/lr_baseline_<feat-tag>_multiseed_<timestamp>.json
-RES_DIR/figures/lr_baseline_<feat-tag>_multiseed_<timestamp>_*.png
 
 Usage
 -----
@@ -88,7 +49,6 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-# Make src/ importable
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "src"))
 
@@ -111,25 +71,11 @@ from data_utils import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Feature extraction — three sources, one interface
-# ---------------------------------------------------------------------------
 
 def extract_mfcc_summary(audio_id: str, sr: int = 16000,
                          n_mfcc: int = 20,
                          use_delta: bool = False) -> np.ndarray:
-    """
-    Compute MFCCs on the fly from the WAV file.
-
-    Layout (use_delta=False, default):
-        [mean(MFCC) | std(MFCC)]                → 2 * n_mfcc  = 40
-
-    Layout (use_delta=True):
-        [mean | std | mean(Δ) | std(Δ)]         → 4 * n_mfcc  = 80
-
-    Empty/unreadable clips return zeros of the correct length so the
-    feature matrix shape stays consistent.
-    """
+    
     import librosa
 
     wav_path = WAV_DIR / f"{audio_id}.wav"
@@ -144,12 +90,10 @@ def extract_mfcc_summary(audio_id: str, sr: int = 16000,
     if len(y) == 0:
         return np.zeros(out_dim, dtype=np.float32)
 
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc)  # (n_mfcc, T)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc) 
     parts = [mfcc.mean(axis=1), mfcc.std(axis=1)]
 
     if use_delta:
-        # librosa.feature.delta needs at least width=9 frames by default.
-        # Very short clips would error; fall back to zeros for delta.
         if mfcc.shape[1] >= 9:
             delta = librosa.feature.delta(mfcc)
             parts += [delta.mean(axis=1), delta.std(axis=1)]
@@ -160,39 +104,19 @@ def extract_mfcc_summary(audio_id: str, sr: int = 16000,
 
 
 def extract_mel_summary(audio_id: str) -> np.ndarray:
-    """
-    Read the project's mel spectrogram PNG, return mean+std per mel bin
-    along the time axis.
-
-    PNG shape after load_png is (F, T) = (128, 230). We keep the same
-    230-frame padded length that Models 2 and 3 see, so the comparison
-    is on identical input signals; the padding bias affects all three
-    models identically when they use mel.
-
-    Output: 2 * 128 = 256-dim summary vector.
-    """
+   
     png_path = SPEC_DIR / f"{audio_id}.png"
     spec = load_png(str(png_path), target_height=128, target_width=230)
-    # spec shape: (128, 230) — F rows, T columns
     return np.concatenate([
-        spec.mean(axis=1),  # mean per mel bin (over time)
-        spec.std(axis=1),   # std per mel bin (over time)
+        spec.mean(axis=1), 
+        spec.std(axis=1),   
     ]).astype(np.float32)
 
 
 def extract_wav2vec2_summary(audio_id: str) -> np.ndarray:
-    """
-    Read the project's pre-extracted wav2vec2 embedding .npy file,
-    return mean+std per embedding dim along the time axis.
-
-    File shape: (768, T) where T is the per-clip frame count after
-    wav2vec2's downsampling. The .npy files are per-clip, not pre-padded,
-    so all frames here are real (no padding contamination).
-
-    Output: 2 * 768 = 1536-dim summary vector.
-    """
+    
     npy_path = PRETRAINED_DIR / f"{audio_id}.npy"
-    feat = np.load(npy_path)  # (768, T)
+    feat = np.load(npy_path)  
 
     if feat.shape[1] == 0:
         return np.zeros(2 * feat.shape[0], dtype=np.float32)
@@ -205,10 +129,6 @@ def extract_wav2vec2_summary(audio_id: str) -> np.ndarray:
 
 def get_extractor(feature_source: str, n_mfcc: int = 20,
                   use_delta: bool = False):
-    """
-    Return a callable f(audio_id) -> np.ndarray for the chosen source.
-    Closing over n_mfcc/use_delta keeps the per-clip cache loop simple.
-    """
     if feature_source == "mfcc":
         return lambda aid: extract_mfcc_summary(
             aid, n_mfcc=n_mfcc, use_delta=use_delta,
@@ -223,12 +143,7 @@ def get_extractor(feature_source: str, n_mfcc: int = 20,
 
 def build_feature_matrix(df: pd.DataFrame, cache_dir: Path,
                          extractor) -> np.ndarray:
-    """
-    Build (n_clips, feat_dim) array. Caches per-clip features as .npy
-    in cache_dir so re-runs are fast. Cache key = cache_dir name, which
-    encodes feature_source / n_mfcc / use_delta — different configs go
-    in separate dirs so they cannot overwrite each other.
-    """
+   
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     feats = []
@@ -247,10 +162,7 @@ def build_feature_matrix(df: pd.DataFrame, cache_dir: Path,
 
 def feature_names(feature_source: str, n_mfcc: int = 20,
                   use_delta: bool = False) -> list:
-    """
-    Human-readable names for each feature dimension. Used in the
-    feature-importance plot.
-    """
+   
     if feature_source == "mfcc":
         names = (
             [f"mfcc_mean_{i}" for i in range(n_mfcc)]
@@ -276,29 +188,12 @@ def feature_names(feature_source: str, n_mfcc: int = 20,
         raise ValueError(f"unknown feature_source: {feature_source}")
 
 
-# ---------------------------------------------------------------------------
-# Per-seed run
-# ---------------------------------------------------------------------------
-
 def run_one_seed(seed: int, X_train, y_train, groups_train,
                  X_val, y_val,
                  X_test, y_test,
                  c_grid: np.ndarray,
                  verbose: bool = True) -> dict:
-    """
-    Single-seed run.
-
-    Selection: inner LeaveOneGroupOut CV over training children only —
-    val_df is NOT included in the inner CV pool, so val numbers stay
-    untouched and can be reported. The original notebook concatenated
-    train+val for the search; we keep val held out so the val→test gap
-    is a meaningful diagnostic that compares fairly against Models 2/3.
-
-    Refit:
-      - For test reporting: refit on train+val with selected C.
-      - For val reporting: refit on train alone with selected C, then
-        score on val (no leakage).
-    """
+    
     pipeline = Pipeline([
         ("scaler", StandardScaler()),
         ("logreg", LogisticRegression(
@@ -308,7 +203,6 @@ def run_one_seed(seed: int, X_train, y_train, groups_train,
         )),
     ])
 
-    # --- Inner CV: select C using ONLY training children ---------------
     inner_cv = LeaveOneGroupOut()
     grid = GridSearchCV(
         pipeline,
@@ -324,7 +218,6 @@ def run_one_seed(seed: int, X_train, y_train, groups_train,
         print(f"  seed {seed}: selected C={best_C:.3g} "
               f"(inner-CV macro-F1={grid.best_score_:.4f})")
 
-    # --- Val: refit on train alone, score on val -----------------------
     val_pipe = Pipeline([
         ("scaler", StandardScaler()),
         ("logreg", LogisticRegression(
@@ -339,7 +232,6 @@ def run_one_seed(seed: int, X_train, y_train, groups_train,
     val_per_class = f1_score(y_val, val_preds, average=None,
                               labels=CLASS_NAMES, zero_division=0)
 
-    # --- Test: refit on train + val, score on test ---------------------
     X_train_val = np.vstack([X_train, X_val])
     y_train_val = np.concatenate([y_train, y_val])
     test_pipe = Pipeline([
@@ -379,9 +271,6 @@ def run_one_seed(seed: int, X_train, y_train, groups_train,
     }
 
 
-# ---------------------------------------------------------------------------
-# Plots
-# ---------------------------------------------------------------------------
 
 def plot_confusion_matrix(per_seed_results: list, save_path: Path,
                           title: str = ""):
@@ -474,8 +363,7 @@ def plot_top_features(per_seed_results: list, feat_names: list,
 
         coef_stack = np.stack([np.array(r["logreg_coef"])
                                 for r in per_seed_results], axis=0)
-        # shape: (n_seeds, n_classes, n_features)
-        mean_coef = coef_stack.mean(axis=0)  # (n_classes, n_features)
+        mean_coef = coef_stack.mean(axis=0)  
 
         n_classes = len(ref_classes)
         fig, axes = plt.subplots(2, 2, figsize=(13, 9))
@@ -505,9 +393,6 @@ def plot_top_features(per_seed_results: list, feat_names: list,
         print(f"Top features plot failed: {e}")
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def parse_args():
     p = argparse.ArgumentParser(
@@ -534,7 +419,7 @@ def feature_tag(args) -> str:
     """Cache and output filename tag — uniquely identifies the config."""
     if args.features == "mfcc":
         return f"mfcc{args.n_mfcc}{'_delta' if args.use_delta else ''}"
-    return args.features  # mel / wav2vec2
+    return args.features  
 
 
 def main():
@@ -556,12 +441,10 @@ def main():
         print(f"  use_delta    : {args.use_delta}")
     print(f"C grid         : {c_grid}")
 
-    # ── Data ───────────────────────────────────────────────────────────
     print("\n[1/4] Loading splits and master table...")
     df = build_master_table(verbose=False)
     df = df[df["wav_exists"]].copy()
 
-    # Source-file existence check, fail fast with a clear message
     if args.features == "mel":
         missing = [aid for aid in df["audio_ID"]
                    if not (SPEC_DIR / f"{aid}.png").exists()]
@@ -577,7 +460,6 @@ def main():
                   f"{PRETRAINED_DIR}.")
             print(f"  Run the wav2vec2 extraction script first.")
             sys.exit(1)
-    # mfcc: WAV files are checked at extraction time (per-clip try/except)
 
     protocol = determine_eval_protocol(df)
     folds = load_splits(protocol)
@@ -587,7 +469,6 @@ def main():
     print(f"  train: n={len(train_df)} | val: n={len(val_df)} | "
           f"test: n={len(test_df)}")
 
-    # ── Feature extraction ────────────────────────────────────────────
     cache_dir = cfg.RES_DIR / f"lr_features_{tag}"
     extractor = get_extractor(args.features, args.n_mfcc, args.use_delta)
     print(f"\n[2/4] Extracting {args.features.upper()} summary features "
@@ -608,7 +489,6 @@ def main():
     print(f"  feature dim  : {X_train.shape[1]}")
     print(f"  unique training children: {sorted(set(groups_train))}")
 
-    # ── Per-seed runs ─────────────────────────────────────────────────
     print(f"\n[3/4] Running {len(args.seeds)} seeds...")
     per_seed = []
     for s in args.seeds:
@@ -621,7 +501,6 @@ def main():
             c_grid=c_grid,
         ))
 
-    # ── Aggregate ─────────────────────────────────────────────────────
     test_f1s = np.array([r["test_macro_f1"] for r in per_seed])
     val_f1s = np.array([r["val_macro_f1"] for r in per_seed])
     gap = val_f1s - test_f1s
@@ -654,7 +533,6 @@ def main():
               f"± {per_class_test[c].std():.3f}")
     print("=" * 60)
 
-    # ── Save ──────────────────────────────────────────────────────────
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_tag = f"lr_baseline_{tag}_multiseed_{timestamp}"
 
@@ -705,7 +583,6 @@ def main():
         json.dump(agg, f, indent=2)
     print(f"\nResults → {save_path}")
 
-    # ── Plots ─────────────────────────────────────────────────────────
     print("\n[4/4] Building plots...")
     feat_label = args.features
     if args.features == "mfcc":

@@ -9,21 +9,6 @@ pipeline (F_DIM=128, MAX_LEN=230) so no config changes are needed:
   - Zero-padded from 120 → 128 on the frequency axis
   - Padded / truncated to 230 time frames
 
-Each file is saved as a .npy for fast loading by the transformer pipeline.
-
-Why MFCCs instead of mel spectrograms?
---------------------------------------
-The cosine transform that converts mel spectra into MFCCs decorrelates the
-spectral envelope — the component that most strongly encodes speaker identity.
-In a cross-participant evaluation where the model trains on 7 children and
-tests on 1 unseen child, stripping speaker-specific spectral shape from the
-input features may improve generalisation. MFCCs were the dominant feature
-for cross-speaker tasks in classical speech processing for this reason.
-
-Stacking first and second temporal derivatives (Δ + ΔΔ) adds explicit
-dynamics that the Transformer otherwise has to learn from scratch on raw
-mel spectrograms.
-
 Usage
 -----
     # Default: matches pipeline dimensions exactly (128 × 230)
@@ -41,19 +26,14 @@ import numpy as np
 
 from pathlib import Path
 
-# Make src/ importable
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "src"))
 
 import config as cfg
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def extract_number(file_name: str) -> int:
-    """Extract leading integer from a filename for natural sorting."""
     match = re.search(r"\d+", file_name)
     return int(match.group()) if match else float("inf")
 
@@ -65,30 +45,17 @@ def extract_mfcc_features(
     target_freq_bins: int = 128,
     max_frames: int = 230,
 ) -> np.ndarray:
-    """
-    Load one .wav file and return a (target_freq_bins, max_frames) float32 array.
 
-    Steps:
-      1. Extract n_mfcc MFCCs → (n_mfcc, T)
-      2. Compute Δ and ΔΔ → stack to (n_mfcc*3, T)
-      3. Zero-pad frequency axis from n_mfcc*3 → target_freq_bins
-      4. Pad or truncate time axis to max_frames
-
-    With n_mfcc=40, the stacked features are (120, T). Padding to 128
-    adds 8 zero rows, making the output shape identical to mel spectrograms
-    (128, 230). The Transformer's input_proj layer handles the mapping.
-    """
     import librosa
 
     audio, _ = librosa.load(file_path, sr=sr)
 
-    mfccs  = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc)  # (n_mfcc, T)
-    delta1 = librosa.feature.delta(mfccs)                          # (n_mfcc, T)
-    delta2 = librosa.feature.delta(mfccs, order=2)                 # (n_mfcc, T)
+    mfccs  = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc) 
+    delta1 = librosa.feature.delta(mfccs)                         
+    delta2 = librosa.feature.delta(mfccs, order=2)               
 
-    features = np.vstack([mfccs, delta1, delta2])                  # (n_mfcc*3, T)
+    features = np.vstack([mfccs, delta1, delta2])                  
 
-    # Pad frequency axis to target_freq_bins
     freq_bins = features.shape[0]
     if freq_bins < target_freq_bins:
         pad_rows = target_freq_bins - freq_bins
@@ -96,19 +63,14 @@ def extract_mfcc_features(
     elif freq_bins > target_freq_bins:
         features = features[:target_freq_bins, :]
 
-    # Pad or truncate time axis to max_frames
     T = features.shape[1]
     if T < max_frames:
         features = np.pad(features, ((0, 0), (0, max_frames - T)))
     else:
         features = features[:, :max_frames]
 
-    return features.astype(np.float32)                             # (target_freq_bins, max_frames)
+    return features.astype(np.float32)                            
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(
@@ -139,7 +101,6 @@ def main():
                         help="Skip clips that already have a .npy file")
     args = parser.parse_args()
 
-    # Resolve default paths from config
     audio_dir  = args.audio_dir or str(cfg.WAV_DIR)
     output_dir = args.output_dir or str(cfg.RES_DIR / "mfccs")
 

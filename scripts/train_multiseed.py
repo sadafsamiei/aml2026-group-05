@@ -3,10 +3,6 @@ train_multiseed.py
 ------------------
 Multi-seed wrapper around the existing single-run trainers for Models 2 and 3.
 
-Runs the same model+hparams across N seeds, then aggregates val/test
-macro-F1 (mean ± std) and produces overlay plots that combine all seeds
-into a single figure for each diagnostic.
-
 v2 dropout support
 ------------------
 Optuna (v2) searches over four independent dropout locations:
@@ -15,10 +11,6 @@ Optuna (v2) searches over four independent dropout locations:
   --dropout_head     after pooling, before classifier (NEW v2)
   --dropout_meta     on metadata query (Model 3 only, NEW v2)
 
-If you pass these flags, they are forwarded individually to the trainer.
-The legacy --dropout flag is still supported and acts as a shortcut: it
-sets dropout_encoder = dropout_head = dropout (and dropout_meta = 0.0,
-dropout_input = 0.0) — i.e. the v1 behaviour.
 
 Usage (v1 / legacy)
 -------------------
@@ -38,7 +30,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Make src/ and scripts/ both importable
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "src"))
 sys.path.insert(0, str(HERE))
@@ -66,9 +57,6 @@ from train_transformer_audio import run_single as run_single_audio
 from train_transformer_attn  import run_single as run_single_attn
 
 
-# ---------------------------------------------------------------------------
-# Reproducibility helper
-# ---------------------------------------------------------------------------
 
 def set_seed(seed: int):
     import random
@@ -79,9 +67,6 @@ def set_seed(seed: int):
         torch.cuda.manual_seed_all(seed)
 
 
-# ---------------------------------------------------------------------------
-# Per-seed dispatch
-# ---------------------------------------------------------------------------
 
 def run_one_seed(model_name: str, seed: int, folds, f_dim, max_len,
                  hparams, device, use_meta, meta_stats_per_fold,
@@ -106,10 +91,6 @@ def run_one_seed(model_name: str, seed: int, folds, f_dim, max_len,
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
-
-# ---------------------------------------------------------------------------
-# Aggregation
-# ---------------------------------------------------------------------------
 
 def aggregate_seed_results(per_seed_summaries: list, seeds: list,
                            model_name: str, hparams: dict,
@@ -193,10 +174,6 @@ def print_aggregated_summary(agg: dict):
         print(f"    {c:<6}: {m['mean']:.3f} ± {m['std']:.3f}")
     print(f"{'='*62}")
 
-
-# ---------------------------------------------------------------------------
-# Overlay plots (unchanged from original)
-# ---------------------------------------------------------------------------
 
 def plot_training_curves_overlay(per_seed_summaries, seeds, save_path,
                                  n_present_classes, title=""):
@@ -336,7 +313,6 @@ def plot_attention_overlay(model_name, per_seed_summaries, seeds, val_df,
 
         hp = per_seed_summaries[0]["hparams"]
 
-        # Resolve dropout for model construction (handles both v1 and v2)
         d_enc  = hp.get("dropout_encoder", hp.get("dropout", 0.3))
         d_head = hp.get("dropout_head",    hp.get("dropout", 0.3))
         d_in   = hp.get("dropout_input",   0.0)
@@ -348,7 +324,6 @@ def plot_attention_overlay(model_name, per_seed_summaries, seeds, val_df,
                 print(f"  Checkpoint missing for seed {s}: {ckpt_path}")
                 continue
 
-            # Try v2 signature first; fall back to v1 if model doesn't accept it
             try:
                 model = AttentivePoolingTransformer(
                     input_dim=f_dim, d_model=hp["d_model"],
@@ -398,10 +373,6 @@ def plot_attention_overlay(model_name, per_seed_summaries, seeds, val_df,
         import traceback; traceback.print_exc()
 
 
-# ---------------------------------------------------------------------------
-# Save aggregated results
-# ---------------------------------------------------------------------------
-
 def save_aggregated(agg: dict, path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -417,10 +388,6 @@ def save_aggregated(agg: dict, path: Path):
     print(f"Aggregated results → {path}")
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
 def parse_args():
     p = argparse.ArgumentParser(
         description="Multi-seed wrapper for Models 2 (audio) and 3 (attn)")
@@ -430,7 +397,6 @@ def parse_args():
     p.add_argument("--d_model",    type=int,   default=None)
     p.add_argument("--nhead",      type=int,   default=None)
     p.add_argument("--num_layers", type=int,   default=None)
-    # ── Dropout: legacy single flag + 4 v2 location-specific flags ──────
     p.add_argument("--dropout",         type=float, default=None,
                    help="Legacy v1: sets dropout_encoder=dropout_head=this. "
                         "Ignored if any of --dropout_encoder/_head/_input/_meta given.")
@@ -442,7 +408,6 @@ def parse_args():
                    help="v2: dropout after input projection")
     p.add_argument("--dropout_meta",    type=float, default=None,
                    help="v2: dropout on metadata query (Model 3 only)")
-    # ── Standard ────────────────────────────────────────────────────────
     p.add_argument("--lr",         type=float, default=None)
     p.add_argument("--batch_size", type=int,   default=None)
     p.add_argument("--epochs",     type=int,   default=None)
@@ -455,15 +420,6 @@ def parse_args():
 
 
 def resolve_dropouts(args):
-    """
-    Build the dropout entries that go into hparams.
-
-    Logic:
-      - If any of the v2 flags is set, use them (with 0.0 default for unset).
-      - Else if --dropout is set, fan it out to encoder+head, leave input+meta=0.
-      - Else fall back to whatever the preset has (caller doesn't override).
-    Returns a dict that should be merged into hparams.
-    """
     v2_set = any(getattr(args, k) is not None for k in
                  ["dropout_encoder", "dropout_head",
                   "dropout_input",   "dropout_meta"])
@@ -473,7 +429,6 @@ def resolve_dropouts(args):
             "dropout_head"   : args.dropout_head    if args.dropout_head    is not None else 0.0,
             "dropout_input"  : args.dropout_input   if args.dropout_input   is not None else 0.0,
             "dropout_meta"   : args.dropout_meta    if args.dropout_meta    is not None else 0.0,
-            # keep legacy key for any downstream code that reads it
             "dropout"        : args.dropout_encoder if args.dropout_encoder is not None else 0.0,
         }
     elif args.dropout is not None:
@@ -485,7 +440,7 @@ def resolve_dropouts(args):
             "dropout_meta"   : 0.0,
         }
     else:
-        return {}   # take from preset
+        return {}   
 
 
 def main():
@@ -501,23 +456,19 @@ def main():
     print(f"Model : {args.model}")
     print(f"Seeds : {args.seeds}")
 
-    # Build hyperparameters from preset + CLI overrides
     base    = HPARAM_SMALL if args.preset == "small" else HPARAM_FULL
     hparams = dict(base)
 
-    # Standard scalar overrides
     for key in ["d_model", "nhead", "num_layers",
                 "lr", "batch_size", "epochs", "patience"]:
         v = getattr(args, key)
         if v is not None:
             hparams[key] = v
 
-    # Dropout overrides (v1 legacy + v2 multi-location)
     hparams.update(resolve_dropouts(args))
 
     print(f"\nHyperparameters: {hparams}")
 
-    # ── Data ────────────────────────────────────────────────────────────
     print("\n[1/4] Building master table & splits...")
     df = build_master_table(verbose=False)
     if df["png_exists"].sum() == 0:
@@ -546,7 +497,6 @@ def main():
 
     val_df_fold0 = folds[0][1]
 
-    # ── Per-seed runs ───────────────────────────────────────────────────
     print(f"\n[2/4] Running {len(args.seeds)} seeds...")
     per_seed_summaries = []
     for s in args.seeds:
@@ -562,7 +512,6 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    # ── Aggregate ────────────────────────────────────────────────────────
     print("\n[3/4] Aggregating across seeds...")
     agg = aggregate_seed_results(
         per_seed_summaries, args.seeds, args.model, hparams,
@@ -574,7 +523,6 @@ def main():
     run_tag   = f"{args.model}_multiseed_{timestamp}"
     save_aggregated(agg, RESULTS_DIR / f"{run_tag}.json")
 
-    # ── Overlay plots ────────────────────────────────────────────────────
     print("\n[4/4] Building overlay plots...")
     title_suffix = (f"{args.model.upper()} — {len(args.seeds)} seeds, "
                     f"d={hparams['d_model']}, L={hparams['num_layers']}")
