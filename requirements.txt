@@ -1,0 +1,77 @@
+# =============================================================================
+# requirements.txt
+# Child Vocalisation Context Classification — ACQDIV / Shipibo-Conibo
+# Python >= 3.10 required
+# =============================================================================
+#
+# GPU NOTE (Renkulab / CUDA 12.4 driver)
+# --------------------------------------
+# We pin torch to a CUDA 12.1 build (+cu121). These wheels run on any NVIDIA
+# driver >= 525, including the 550.x driver on Renkulab's A10 nodes.
+# Do NOT remove the --extra-index-url line below — without it, pip will pull
+# the default PyPI wheel, which on recent releases is built for CUDA 13.0
+# and will silently fall back to CPU on a 12.4 driver.
+#
+# CPU-only install (e.g. local laptop without NVIDIA GPU):
+#   Replace the index URL below with:
+#       --extra-index-url https://download.pytorch.org/whl/cpu
+#   and change "+cu121" to "+cpu" on the torch / torchvision lines.
+# =============================================================================
+
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+
+# -----------------------------------------------------------------------------
+# Core numeric / data
+# -----------------------------------------------------------------------------
+numpy>=1.26,<3.0
+pandas>=2.1,<4.0
+scipy>=1.11
+
+
+# -----------------------------------------------------------------------------
+# Machine learning — baseline model
+# -----------------------------------------------------------------------------
+scikit-learn>=1.4
+
+
+# -----------------------------------------------------------------------------
+# Deep learning — Transformer models (CUDA 12.1 build)
+# -----------------------------------------------------------------------------
+torch==2.4.1+cu121
+torchvision==0.19.1+cu121
+
+
+# -----------------------------------------------------------------------------
+# Audio / image loading
+# -----------------------------------------------------------------------------
+Pillow>=10.0
+
+
+# -----------------------------------------------------------------------------
+# Visualisation
+# -----------------------------------------------------------------------------
+matplotlib>=3.8
+seaborn>=0.13
+
+
+# -----------------------------------------------------------------------------
+# Progress and utilities
+# -----------------------------------------------------------------------------
+tqdm>=4.66
+
+
+# -----------------------------------------------------------------------------
+# Notebook environment
+# -----------------------------------------------------------------------------
+jupyter>=1.0
+ipykernel>=6.29
+jupyterlab>=4.0
+
+
+# -----------------------------------------------------------------------------
+# Code quality
+# -----------------------------------------------------------------------------
+black>=24.0
+isort>=5.13
+flake8>=7.0

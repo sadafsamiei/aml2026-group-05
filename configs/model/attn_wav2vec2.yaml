@@ -1,0 +1,23 @@
+# configs/model/attn_wav2vec2.yaml
+# ──────────────────────────────────────────────────────────────────────────
+# Model 3 (AttentivePoolingTransformer, external metadata) — wav2vec2
+# Note: numerical top-1 config showed lucky initialisation and did not
+# reproduce. This is the 3rd-ranked config with sustained learning.
+# ──────────────────────────────────────────────────────────────────────────
+
+# Architecture
+features: wav2vec2
+d_model: 192
+nhead: 4           # 192 / 4 = 48 — valid
+num_layers: 1
+use_external_meta: true
+meta_dim: 2
+
+# Dropout — v2 separate rates
+dropout_encoder: 0.3   # manually selected winner
+dropout_input: 0.0     # baseline
+dropout_head: 0.3      # baseline
+dropout_meta: 0.0      # baseline — tune via Optuna
+
+# Optimiser
+lr: 0.0005

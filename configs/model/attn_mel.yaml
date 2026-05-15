@@ -1,0 +1,27 @@
+# configs/model/attn_mel.yaml
+# ──────────────────────────────────────────────────────────────────────────
+# Model 3 (AttentivePoolingTransformer, external metadata) — Mel features
+#
+# v2 adds separate dropout rates:
+#   dropout_encoder : inside transformer layers  
+#   dropout_input   : after input projection     
+#   dropout_head    : after pooling, before head 
+#   dropout_meta    : on the metadata query      
+# ──────────────────────────────────────────────────────────────────────────
+
+# Architecture
+features: mel
+d_model: 32
+nhead: 4
+num_layers: 1
+use_external_meta: true
+meta_dim: 2
+
+# Dropout — v2 separate rates
+dropout_encoder: 0.3   # canonical grid winner
+dropout_input: 0.0     # baseline — set to 0.0 to match v1
+dropout_head: 0.3      # same as encoder to match v1 baseline
+dropout_meta: 0.0      # baseline — tune via Optuna
+
+# Optimiser
+lr: 0.001
