@@ -1,37 +1,25 @@
-#!/usr/bin/env python3
 """
 experiments/pretrained_embeddings/finetune_wav2vec2.py
 -------------------------------------------
 Controlled experiment: does fine-tuning wav2vec2 help on our dataset?
 
-Hypothesis: No. Fine-tuning on 569 clips from 7 children amplifies the
-speaker-identity problem rather than improving context classification.
-
 What this script does:
     Trains THREE configurations, all else equal:
-        (a) Frozen wav2vec2  — exactly what the project already does
-        (b) Fine-tune top 2 layers — giving fine-tuning its best chance
-        (c) Fine-tune top 4 layers — even more capacity unfrozen
+        (a) Frozen wav2vec2  
+        (b) Fine-tune top 2 layers 
+        (c) Fine-tune top 4 layers
 
-    For each condition, runs all 5 seeds and reports:
-        - Training F1   (how well it fits the training set)
-        - Validation F1 (how well it fits the Shipibo val child)
-        - Test F1       (how well it generalises to the Tagalog test child)
-        - Val-test gap  (proxy for speaker-identity overfitting)
-        - Seed std      (stability across runs)
+    For each condition:
+        - Training F1   
+        - Validation F1 
+        - Test F1       
+        - Val-test gap 
+        - Seed std      
 
-Expected outcome:
-    - As more layers unfreeze, training F1 rises (model memorises speakers)
-    - Test F1 stays flat or drops (memorisation doesn't generalise)
-    - Val-test gap widens (more overfitting to Shipibo validation child)
-    - Seed std increases (different seeds memorise different speaker patterns)
 
 Usage:
-    cd /home/renku/work/aml2026-group-05
     python experiments/pretrained_embeddings/finetune_wav2vec2.py
 
-Requirements:
-    pip install transformers torch librosa scikit-learn pandas
 """
 
 import json
@@ -53,35 +41,29 @@ from transformers import Wav2Vec2Model
 
 warnings.filterwarnings("ignore")
 
-# ── project imports ──────────────────────────────────────────────────────
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1] if len(HERE.parents) >= 2 else Path.cwd()
 
-# Make imports work whether the script is run from repo root or elsewhere.
 for candidate in [ROOT / "src", ROOT, HERE.parent / "src"]:
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
 import config as cfg
 
-# ── constants ─────────────────────────────────────────────────────────────
 SEEDS        = [42]
-CLASSES      = cfg.CLASS_NAMES                  # ['EXTEV','INTER','MOVE','PLTOY']
+CLASSES      = cfg.CLASS_NAMES                  
 N_CLASSES    = len(CLASSES)
 SR           = 16_000
-MAX_SECONDS  = 7.4                              # matches T=230 at hop=512
+MAX_SECONDS  = 7.4                             
 MAX_SAMPLES  = int(MAX_SECONDS * SR)
 DEVICE       = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Fine-tuning hyperparameters — chosen conservatively to give fine-tuning
-# the best possible chance, not the worst.
-BATCH_SIZE   = 8       # smaller than training (wav2vec2 is large in memory)
-LR_FROZEN    = 1e-5    # tiny lr for pretrained layers (avoid catastrophic forgetting)
-LR_HEAD      = 1e-3    # normal lr for the classifier head
-EPOCHS       = 35       # fewer epochs — fine-tuning converges faster
-PATIENCE     = 8      # early stopping patience
+BATCH_SIZE   = 8     
+LR_FROZEN    = 1e-5    
+LR_HEAD      = 1e-3    
+EPOCHS       = 35       
+PATIENCE     = 8      
 
-# Reference results from the project (for comparison in the summary table)
 REFERENCE = {
     "LR mel + Optuna (project best)":  {"test": 0.311, "std": 0.000},
     "M2 wav2vec2 canonical":           {"test": 0.219, "std": 0.018},
@@ -93,18 +75,11 @@ print(f"\nDevice: {DEVICE}")
 print(f"Audio: {MAX_SECONDS}s max = {MAX_SAMPLES:,} samples at {SR} Hz")
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# DATA LOADING
-# ═══════════════════════════════════════════════════════════════════════
-
-# These globals are populated from the split CSVs. They let load_audio()
-# use the exact wav_path from train/val/test CSVs when available.
 SPLIT_FRAMES: dict[str, pd.DataFrame] = {}
 AUDIO_PATH_BY_ID: dict[str, Path] = {}
 
 
 def _unique_paths(paths):
-    """Return paths in order, removing duplicates."""
     seen = set()
     out = []
     for path in paths:
@@ -117,7 +92,6 @@ def _unique_paths(paths):
 
 
 def _split_dirs() -> list[Path]:
-    """Likely locations for split files in this Renku/project layout."""
     return _unique_paths([
         Path("/home/renku/work/data/splits"),
         ROOT / "data" / "splits",
@@ -128,7 +102,6 @@ def _split_dirs() -> list[Path]:
 
 
 def _normalise_audio_id(value) -> str:
-    """Convert IDs, filenames, or paths to the bare audio ID used as a key."""
     text = str(value).strip()
     if not text or text.lower() == "nan":
         return ""
@@ -136,7 +109,6 @@ def _normalise_audio_id(value) -> str:
 
 
 def _find_split_file(split: str) -> Path:
-    """Find train/val/test split file, allowing several real-world names."""
     name_patterns = {
         "train": [
             "train.csv", "train.tsv", "train.txt", "*train*.csv", "*train*",
@@ -177,23 +149,19 @@ def _find_split_file(split: str) -> Path:
 
 
 def _read_split_csv(path: Path) -> pd.DataFrame:
-    """Read a split file with flexible delimiter/extension handling."""
     try:
         df = pd.read_csv(path)
     except Exception:
         df = pd.read_csv(path, sep=None, engine="python")
 
-    # If pandas read the whole row into one column, retry with delimiter sniffing.
     if len(df.columns) == 1 and any(sep in str(df.columns[0]) for sep in [",", "\t", ";"]):
         df = pd.read_csv(path, sep=None, engine="python")
 
-    # Normalize column names only for lookup; keep original columns too.
     df.columns = [str(c).strip() for c in df.columns]
     return df
 
 
 def _pick_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
-    """Find a column case-insensitively from candidate names."""
     lower_to_original = {c.lower(): c for c in df.columns}
     for name in candidates:
         if name.lower() in lower_to_original:
@@ -237,7 +205,6 @@ def _path_column(df: pd.DataFrame) -> str | None:
 
 
 def _resolve_audio_path(raw_path: str) -> Path:
-    """Resolve absolute or relative paths from the split CSV."""
     p = Path(str(raw_path).strip())
     if p.is_absolute():
         return p
@@ -254,15 +221,6 @@ def _resolve_audio_path(raw_path: str) -> Path:
 
 
 def load_splits() -> dict:
-    """
-    Load train/val/test splits from separate CSV-like files.
-
-    Your project uses files such as:
-        /home/renku/work/data/splits/train.csv
-        /home/renku/work/data/splits/test.csv
-        and a validation file that may be val.csv, valid.csv, dev.csv, etc.
-    The ID column may be named audio_ID rather than audio_id.
-    """
     global SPLIT_FRAMES, AUDIO_PATH_BY_ID
 
     split_paths = {
@@ -301,9 +259,7 @@ def load_splits() -> dict:
 
 
 def load_label_map() -> dict:
-    """Return {audio_id: class4_label} from the loaded split CSV files."""
     if not SPLIT_FRAMES:
-        # Usually load_splits() is called first. This fallback keeps the function usable.
         _ = load_splits()
 
     label_map = {}
@@ -336,7 +292,6 @@ def load_label_map() -> dict:
 
 
 def load_audio(audio_id: str) -> np.ndarray:
-    """Load WAV, resample to SR, pad/truncate to MAX_SAMPLES."""
     audio_id = _normalise_audio_id(audio_id)
 
     candidates = []
@@ -373,11 +328,6 @@ def load_audio(audio_id: str) -> np.ndarray:
 
 
 class RawAudioDataset(Dataset):
-    """
-    Returns raw waveforms so wav2vec2 can process them directly.
-    This is what fine-tuning needs — the actual audio, not pre-extracted
-    features.
-    """
 
     def __init__(self, audio_ids: list, labels: list):
         self.audio_ids = audio_ids
@@ -393,27 +343,12 @@ class RawAudioDataset(Dataset):
         return torch.tensor(audio), torch.tensor(label, dtype=torch.long)
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# MODEL DEFINITIONS
-# ═══════════════════════════════════════════════════════════════════════
-
 class FrozenWav2Vec2(nn.Module):
-    """
-    CONDITION (a) — Frozen feature extractor.
-
-    This is exactly what the project already does when it caches
-    wav2vec2 embeddings. wav2vec2 encodes the audio, we mean-pool
-    across time, then a linear layer classifies.
-
-    Zero wav2vec2 gradients flow. Only the 768→4 head trains.
-    Trainable params: ~3,076 (head only).
-    """
 
     def __init__(self):
         super().__init__()
         self.wav2vec2 = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base")
 
-        # Freeze everything — no gradients through the encoder
         for param in self.wav2vec2.parameters():
             param.requires_grad = False
 
@@ -421,8 +356,8 @@ class FrozenWav2Vec2(nn.Module):
 
     def forward(self, x):
         with torch.no_grad():
-            hidden = self.wav2vec2(x).last_hidden_state  # (B, T, 768)
-        pooled = hidden.mean(dim=1)                       # (B, 768)
+            hidden = self.wav2vec2(x).last_hidden_state  
+        pooled = hidden.mean(dim=1)                       
         return self.head(pooled)
 
     @property
@@ -431,43 +366,28 @@ class FrozenWav2Vec2(nn.Module):
 
 
 class PartiallyFinetunedWav2Vec2(nn.Module):
-    """
-    CONDITIONS (b) and (c) — Top N layers unfrozen.
-
-    wav2vec2-base has 12 transformer layers. We unfreeze only the top N
-    so the model can adapt its representations to our data. This is the
-    most sensible fine-tuning strategy for limited data — we keep the
-    low-level acoustic features frozen and only adapt the high-level
-    contextual representations.
-
-    Even this conservative strategy is expected to overfit on 569 clips.
-    """
 
     def __init__(self, n_unfrozen: int):
         super().__init__()
         self.n_unfrozen = n_unfrozen
         self.wav2vec2   = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base")
 
-        # Step 1: freeze everything
         for param in self.wav2vec2.parameters():
             param.requires_grad = False
 
-        # Step 2: unfreeze the top N transformer encoder layers
-        total = len(self.wav2vec2.encoder.layers)          # 12 for wav2vec2-base
+        total = len(self.wav2vec2.encoder.layers)          
         for layer in self.wav2vec2.encoder.layers[total - n_unfrozen:]:
             for param in layer.parameters():
                 param.requires_grad = True
 
-        # Step 3: also unfreeze the final layer norm
         for param in self.wav2vec2.encoder.layer_norm.parameters():
             param.requires_grad = True
 
         self.head = nn.Linear(768, N_CLASSES)
 
     def forward(self, x):
-        # Gradients DO flow through unfrozen layers
-        hidden = self.wav2vec2(x).last_hidden_state        # (B, T, 768)
-        pooled = hidden.mean(dim=1)                        # (B, 768)
+        hidden = self.wav2vec2(x).last_hidden_state       
+        pooled = hidden.mean(dim=1)                        
         return self.head(pooled)
 
     @property
@@ -475,12 +395,7 @@ class PartiallyFinetunedWav2Vec2(nn.Module):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# TRAINING UTILITIES
-# ═══════════════════════════════════════════════════════════════════════
-
 def class_weights_tensor(labels: list) -> torch.Tensor:
-    """Balanced class weights — same as class_weight='balanced' in sklearn."""
     indices = [CLASSES.index(l) for l in labels]
     w = compute_class_weight(
         class_weight="balanced",
@@ -491,13 +406,6 @@ def class_weights_tensor(labels: list) -> torch.Tensor:
 
 
 def make_optimizer(model, is_finetuned: bool):
-    """
-    Two param groups for fine-tuning:
-        - Pretrained layers: very small LR (avoid destroying learned features)
-        - New head:          normal LR
-
-    For the frozen condition, only the head trains.
-    """
     if is_finetuned:
         pretrained = [p for n, p in model.named_parameters()
                       if p.requires_grad and "head" not in n]
@@ -545,13 +453,7 @@ def evaluate_loader(model, loader):
 
 def run_seed(model, train_loader, val_loader, test_loader,
              criterion, optimizer):
-    """
-    Train one model for one seed with early stopping on val F1.
 
-    Returns the best checkpoint's train/val/test F1.
-    The KEY metric is test F1 — val F1 is the selector,
-    test F1 is the ground truth of generalisation.
-    """
     best_val   = -1.0
     best_test  = 0.0
     best_train = 0.0
@@ -591,10 +493,6 @@ def run_seed(model, train_loader, val_loader, test_loader,
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# MAIN EXPERIMENT
-# ═══════════════════════════════════════════════════════════════════════
-
 def run_experiment():
 
     print("\n" + "═" * 66)
@@ -602,7 +500,6 @@ def run_experiment():
     print("  Hypothesis: No — it amplifies speaker-identity overfitting.")
     print("═" * 66)
 
-    # ── load data ────────────────────────────────────────────────────────
     print("\nLoading data...")
     splits    = load_splits()
     id2label  = load_label_map()
@@ -634,7 +531,6 @@ def run_experiment():
 
     class_w = class_weights_tensor(train_labels)
 
-    # ── three conditions ─────────────────────────────────────────────────
     conditions = [
         {
             "name":       "Frozen wav2vec2 (canonical)",
@@ -663,7 +559,6 @@ def run_experiment():
         print(f"  CONDITION: {cond['name']}")
         print(f"  {cond['desc']}")
 
-        # Print trainable params once (same for all seeds)
         if cond["finetuned"]:
             probe = PartiallyFinetunedWav2Vec2(cond["n_unfrozen"])
         else:
@@ -678,7 +573,6 @@ def run_experiment():
             torch.manual_seed(seed)
             np.random.seed(seed)
 
-            # Fresh model for each seed
             if cond["finetuned"]:
                 model = PartiallyFinetunedWav2Vec2(cond["n_unfrozen"]).to(DEVICE)
             else:
@@ -706,7 +600,6 @@ def run_experiment():
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-        # Aggregate across seeds
         test_arr  = np.array([r["test_f1"]      for r in seed_results])
         val_arr   = np.array([r["val_f1"]       for r in seed_results])
         train_arr = np.array([r["train_f1"]     for r in seed_results])
@@ -732,7 +625,6 @@ def run_experiment():
               f"{agg['test_f1']['std']:.3f}  |  "
               f"val-test gap: {agg['val_test_gap']['mean']:+.3f}")
 
-    # ═══ SUMMARY TABLE ══════════════════════════════════════════════════
     print("\n\n" + "═" * 66)
     print("  RESULTS SUMMARY")
     print("═" * 66)
@@ -754,7 +646,6 @@ def run_experiment():
         print(f"  {name:<35} {'—':>6} {'—':>6} "
               f"{vals['test']:>6.3f} {'—':>6} {vals['std']:>6.3f}")
 
-    # ═══ WHAT THE NUMBERS PROVE ══════════════════════════════════════════
     frozen = all_results[0]
     ft2    = all_results[1]
     ft4    = all_results[2]
@@ -763,7 +654,6 @@ def run_experiment():
     print("  WHAT THE NUMBERS SHOW")
     print("═" * 66)
 
-    # Finding 1: train F1 rises with unfreezing (memorisation)
     print(f"\n  1. TRAINING F1 RISES AS MORE LAYERS UNFREEZE")
     print(f"     Frozen:          train={frozen['train_f1']['mean']:.3f}")
     print(f"     Top-2 unfrozen:  train={ft2['train_f1']['mean']:.3f}")
@@ -772,7 +662,6 @@ def run_experiment():
     print(f"       With only 7 training children, this means it is")
     print(f"       memorising what each speaker sounds like.")
 
-    # Finding 2: test F1 does not improve
     improvement_2 = ft2['test_f1']['mean'] - frozen['test_f1']['mean']
     improvement_4 = ft4['test_f1']['mean'] - frozen['test_f1']['mean']
     print(f"\n  2. TEST F1 DOES NOT IMPROVE")
@@ -784,7 +673,6 @@ def run_experiment():
     print(f"     → Speaker-specific patterns learned from the 7 training")
     print(f"       children do not transfer to the unseen Tagalog test child.")
 
-    # Finding 3: val-test gap widens
     print(f"\n  3. VAL-TEST GAP WIDENS WITH MORE UNFREEZING")
     print(f"     Frozen:          gap={frozen['val_test_gap']['mean']:+.3f}")
     print(f"     Top-2 unfrozen:  gap={ft2['val_test_gap']['mean']:+.3f}")
@@ -793,7 +681,6 @@ def run_experiment():
     print(f"       but this does NOT transfer to the Tagalog test child.")
     print(f"       This is the language confound expressing itself directly.")
 
-    # Finding 4: std rises (instability)
     print(f"\n  4. SEED VARIANCE INCREASES")
     print(f"     Frozen:          std={frozen['test_f1']['std']:.3f}")
     print(f"     Top-2 unfrozen:  std={ft2['test_f1']['std']:.3f}")
@@ -811,7 +698,6 @@ def run_experiment():
     print(f"\n  The σ_speaker = 0.053 from our LOCO analysis predicted this:")
     print(f"  speaker variance dominates everything. Fine-tuning amplifies it.")
 
-    # ═══ SAVE ════════════════════════════════════════════════════════════
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path  = cfg.RES_DIR / "results" / f"finetune_experiment_{timestamp}.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -848,6 +734,5 @@ def run_experiment():
     return output
 
 
-# ════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     run_experiment()
