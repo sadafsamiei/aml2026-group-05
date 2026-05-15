@@ -3,39 +3,15 @@ config.py
 ---------
 Single source of truth for all paths, constants, and hyperparameters.
 
-Path layout on RenkuLab
-------------------------
-Input data (read-only SwitchDrive mount):
-    DATA_DIR = /home/renku/work/aml-project/training_data/
-        ├── anonymised_audios/   ← audio_0000.wav … audio_1008.wav
-        ├── spectrograms/        ← audio_0000.png … (generated once)
-        └── contextsvocs_groupproject_2026-04-07_133933.csv
-
-Output / results (writable, syncs to SwitchDrive data folder):
-    RES_DIR = /home/renku/work/data/
-        ├── splits/              ← train/val/test CSVs
-        ├── models/              ← model checkpoints (.pt)
-        ├── results/             ← JSON metrics
-        └── figures/             ← training curves + confusion matrices
 """
 
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# ★ Adjust these two paths if your mount points differ ★
-# ---------------------------------------------------------------------------
+
 DATA_DIR = Path("/home/renku/work/aml-project/training_data")
 RES_DIR  = Path("/home/renku/work/data")
-
-# ---------------------------------------------------------------------------
-# Input paths  (derived from DATA_DIR — READ ONLY)
-# ---------------------------------------------------------------------------
 WAV_DIR      = DATA_DIR / "denoised_audios"
 CONTEXTS_CSV = DATA_DIR / "contextsvocs_groupproject_2026-04-09_104847.csv"
-
-# ---------------------------------------------------------------------------
-# Output paths
-# ---------------------------------------------------------------------------
 SPEC_DIR    = RES_DIR / "spectrograms"
 MFCC_DIR    = RES_DIR / "mfccs"
 PRETRAINED_DIR = RES_DIR / "pretrained_embeddings"
@@ -44,9 +20,6 @@ MODELS_DIR  = RES_DIR / "models"
 RESULTS_DIR = RES_DIR / "results"
 FIGURES_DIR = RES_DIR / "figures"
 
-# ---------------------------------------------------------------------------
-# Label mapping
-# ---------------------------------------------------------------------------
 PLTOY_LABELS = {"PLTOY"}
 MOVE_LABELS  = {"MOVE"}
 INTER_LABELS = {"INTER"}
@@ -59,9 +32,6 @@ N_CLASSES     = len(CLASS_NAMES)
 
 LANG_FILTER = None
 
-# ---------------------------------------------------------------------------
-# Spectrogram generation parameters
-# ---------------------------------------------------------------------------
 SPEC_SR    = 16000
 SPEC_N_MELS = 128
 SPEC_HOP   = 256
@@ -69,15 +39,11 @@ SPEC_N_FFT = 1024
 SPEC_FMIN  = 20
 SPEC_FMAX  = 8000
 
-# ---------------------------------------------------------------------------
-# Sequence constants
-# ---------------------------------------------------------------------------
+
 F_DIM   = 128
 MAX_LEN = 230
 
-# ---------------------------------------------------------------------------
-# Hyperparameter presets
-# ---------------------------------------------------------------------------
+
 HPARAM_SMALL = {
     "d_model": 32, "nhead": 4, "num_layers": 1,
     "dropout": 0.4, "lr": 1e-3, "weight_decay": 1e-4,
@@ -105,62 +71,28 @@ HPARAM_FULL = {
 
 HPARAM_DEFAULTS = HPARAM_FULL
 
-# ---------------------------------------------------------------------------
-# Feature-type switches
-# ---------------------------------------------------------------------------
 USE_MFCC = False
 
-# Pretrained audio embeddings (wav2vec2-base). When True, loads .npy files
-# from PRETRAINED_DIR and overrides F_DIM to 768 (wav2vec2 embedding dim).
-USE_PRETRAINED = False  # ← flip to True when doing wav2vec2 runs
+USE_PRETRAINED = False  
 
 assert not (USE_MFCC and USE_PRETRAINED), \
     "Cannot use both USE_MFCC and USE_PRETRAINED — pick one."
 
-# Override F_DIM for pretrained embeddings (768-dim wav2vec2 output)
 if USE_PRETRAINED:
     F_DIM = 768
 
-# ---------------------------------------------------------------------------
-# Preprocessing flags — derive from USE_PRETRAINED so you don't have to
-# remember to flip them manually.
-# ---------------------------------------------------------------------------
 USE_PER_CLIP_NORM = True
-# SpecAugment is for spectrogram-like inputs only. Masking wav2vec2
-# embeddings would zero out learned phonetic content — not useful.
 USE_SPECAUGMENT = not USE_PRETRAINED
-
-# SpecAugment hyperparameters (only used when USE_SPECAUGMENT=True)
 SPECAUG_TIME_MASKS  = 2
 SPECAUG_TIME_WIDTH  = 25
 SPECAUG_FREQ_MASKS  = 2
 SPECAUG_FREQ_WIDTH  = 12
 
-# ---------------------------------------------------------------------------
-# Metadata ablation (Model 3 only — ignored when use_external_meta=False)
-# ---------------------------------------------------------------------------
-# Which metadata fields to pass to the attention query. Used to isolate
-# each field's contribution to test F1 without editing model or training
-# code. See MetadataSpectrogramDataset in data_utils.py.
-#
-# Allowed values:
-#   "age_gender"  : use both (canonical — matches what the README reports)
-#   "age_only"    : gender is zeroed out at the dataset boundary
-#   "gender_only" : age is zeroed out at the dataset boundary
-#   "none"        : both zeroed (same as use_external_meta=False)
-#
-# Flip this while running the ablation, then flip back to "age_gender"
-# for your canonical runs. The flag is read at dataset-construction time.
-# ---------------------------------------------------------------------------
 METADATA_MODE = "age_gender"
 #METADATA_MODE = "age_only" 
 #METADATA_MODE = "gender_only" 
 
 
-
-# ---------------------------------------------------------------------------
-# Hyperparameter grids
-# ---------------------------------------------------------------------------
 
 if USE_PRETRAINED:
     # wav2vec2 grid — capacity-focused
@@ -198,10 +130,6 @@ else:
     ]
 
 RANDOM_SEED = 42
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def make_output_dirs():
     for d in [SPEC_DIR, MFCC_DIR, PRETRAINED_DIR, SPLITS_DIR,
