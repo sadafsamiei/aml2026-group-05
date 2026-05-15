@@ -5,38 +5,6 @@ Training loop, evaluation, sanity checks, and results logging.
 Supports both the audio-only Transformer (Model 2) and the attentive
 pooling Transformer (Model 3) via a use_meta flag.
 
-Defensive coding notes
-----------------------
-Two footguns that were present in earlier versions, now fixed:
-
-  1. train_model returns the model in best-val state. Previously the
-     in-memory model was left at whatever epoch training stopped on,
-     and callers had to remember to reload from disk. Now train_model
-     reloads the best checkpoint itself, so the returned model matches
-     the reported best_val_f1 without extra work from the caller.
-     Existing callers that still reload from disk are unaffected —
-     the reload is idempotent.
-
-  2. evaluate computes macro-F1 over the full fixed CLASS_NAMES list,
-     not just over classes present in y_true ∪ y_pred. Previously, if
-     any class was absent from both preds and labels, sklearn would
-     silently drop it from the macro average, inflating the score.
-     This does not fire on our current splits (every split contains
-     all 4 classes), but the fix makes the metric robust to future
-     splits or smaller ablations.
-
-GPU notes
----------
-- cudnn.benchmark is enabled at import time. Our input shapes are fixed
-  (B, MAX_LEN, F_DIM), so cuDNN can pick the fastest algorithm once and
-  cache it. Free speedup on Ampere GPUs.
-- Mixed precision uses bfloat16 (torch.amp.autocast). bf16 has the same
-  dynamic range as fp32 (no GradScaler needed) and is natively supported
-  on the A10. Forward+backward run in bf16; the optimiser keeps fp32
-  master weights. Activation memory roughly halves, throughput improves
-  ~1.5–2× on small Transformers.
-- All .to(device) calls use non_blocking=True so host→device copies can
-  overlap with compute when pin_memory=True on the DataLoader.
 """
 
 import json
@@ -50,36 +18,15 @@ from sklearn.metrics import f1_score, classification_report, confusion_matrix
 
 from config import CLASS_NAMES, LABEL_DECODER
 
-# Enable cuDNN autotuner for fixed-shape inputs (free speedup on GPU).
 torch.backends.cudnn.benchmark = True
-
-# Full class list used for all macro-F1 computations. Importing CLASS_NAMES
-# is the single source of truth; this is just a convenience.
 _ALL_CLASS_IDS = list(range(len(CLASS_NAMES)))
 
 
-# ---------------------------------------------------------------------------
-# Training: one epoch
-# ---------------------------------------------------------------------------
 
 def train_one_epoch(model, loader, optimizer, criterion, device,
                     use_meta: bool = False, grad_clip: float = 1.0,
                     use_amp: bool = True) -> dict:
-    """
-    Run one training epoch.
-
-    Parameters
-    ----------
-    use_meta : if True, expects batches of (x, mask, y, meta) and calls
-               model(x, padding_mask=mask, meta=meta).
-               If False, expects (x, mask, y) and calls
-               model(x, padding_mask=mask) — compatible with AudioTransformer.
-    use_amp  : if True and device is CUDA, run forward+backward in bf16
-               via torch.amp.autocast. bf16 has fp32 dynamic range so no
-               GradScaler is needed. On CPU this flag is ignored.
-
-    Returns dict with keys: 'loss', 'grad_norm'
-    """
+    
     model.train()
     total_loss = 0.0
     total_grad = 0.0
@@ -89,7 +36,6 @@ def train_one_epoch(model, loader, optimizer, criterion, device,
     amp_dtype   = torch.bfloat16
 
     for batch in loader:
-        # Unpack however many items the DataLoader actually yields
         x, mask, y = batch[0], batch[1], batch[2]
         meta = batch[3] if len(batch) == 4 else None
 
@@ -108,19 +54,13 @@ def train_one_epoch(model, loader, optimizer, criterion, device,
         with torch.amp.autocast(device_type="cuda", dtype=amp_dtype,
                                 enabled=amp_enabled):
             if use_meta and meta is not None:
-                # AttentivePoolingTransformer returns (logits, weights)
                 logits, _ = model(x, padding_mask=mask, meta=meta)
             else:
-                # AudioTransformer returns logits directly;
-                # AttentivePoolingTransformer with use_meta=False still
-                # returns a tuple, so handle both shapes.
                 out = model(x, padding_mask=mask)
                 logits = out[0] if isinstance(out, tuple) else out
 
             loss = criterion(logits, y)
 
-        # bf16 has fp32 dynamic range, so we can backward directly
-        # without a GradScaler.
         loss.backward()
         grad_norm = nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
@@ -135,47 +75,19 @@ def train_one_epoch(model, loader, optimizer, criterion, device,
     }
 
 
-# ---------------------------------------------------------------------------
-# Evaluation
-# ---------------------------------------------------------------------------
-
 def evaluate(model, loader, device,
              use_meta: bool = False, return_preds: bool = False,
              use_amp: bool = True) -> dict:
-    """
-    Evaluate the model on a data loader.
-
-    Parameters
-    ----------
-    use_meta     : match the flag used during training.
-    return_preds : if True, include raw prediction and label lists.
-    use_amp      : if True and device is CUDA, run forward in bf16. The
-                   argmax over logits is unaffected by bf16 vs fp32 in
-                   practice.
-
-    Notes
-    -----
-    Macro-F1 is computed over the full fixed class list
-    (labels=list(range(len(CLASS_NAMES)))). If a class is absent from
-    both labels and predictions, its F1 is 0 (via zero_division=0) and
-    it is still counted in the macro average. This keeps the metric
-    consistent across splits and prevents silent inflation when a class
-    is missing.
-
-    Returns dict with keys: 'macro_f1', 'per_class_f1',
-    and optionally 'preds', 'labels', 'attn_weights'.
-    """
     model.eval()
     all_preds   = []
     all_labels  = []
-    all_weights = []   # attention weights (only for attentive pooling model)
+    all_weights = []   
 
     amp_enabled = bool(use_amp and device.type == "cuda")
     amp_dtype   = torch.bfloat16
 
     with torch.no_grad():
         for batch in loader:
-            # Unpack however many items the DataLoader actually yields
             x, mask, y = batch[0], batch[1], batch[2]
             meta = batch[3] if len(batch) == 4 else None
 
@@ -191,12 +103,10 @@ def evaluate(model, loader, device,
                 else:
                     out = model(x, padding_mask=mask)
 
-            # Handle both AudioTransformer (returns tensor) and
-            # AttentivePoolingTransformer (returns tuple)
+
             if isinstance(out, tuple):
                 logits, weights = out
-                # Cast attention weights back to fp32 for downstream stats
-                # (analyse_attention_weights, plotting, etc.)
+
                 all_weights.append(weights.float().cpu())
             else:
                 logits = out
@@ -204,10 +114,6 @@ def evaluate(model, loader, device,
             all_preds.extend(logits.argmax(dim=1).cpu().tolist())
             all_labels.extend(y.tolist())
 
-    # Fix: compute macro-F1 over the full 4-class list, not just classes
-    # present in preds ∪ labels. Without labels=_ALL_CLASS_IDS, sklearn
-    # would drop any class missing from both predictions and ground truth
-    # from the macro average, silently inflating the score.
     macro_f1     = f1_score(all_labels, all_preds,
                             average="macro", zero_division=0,
                             labels=_ALL_CLASS_IDS)
@@ -228,26 +134,13 @@ def evaluate(model, loader, device,
     return result
 
 
-# ---------------------------------------------------------------------------
-# Full training loop with early stopping
-# ---------------------------------------------------------------------------
 
 def train_model(model, train_loader, val_loader, criterion, device,
                 lr: float = 1e-3, weight_decay: float = 1e-4,
                 epochs: int = 100, patience: int = 15,
                 save_path: Path = None, verbose: bool = True,
                 use_meta: bool = False) -> dict:
-    """
-    Train with AdamW + ReduceLROnPlateau + early stopping.
-    Monitors val macro-F1 (higher = better).
-
-    On exit, the in-memory `model` is restored to its best-val state
-    (the checkpoint that produced best_val_f1). Callers can therefore
-    evaluate the returned model directly without an additional
-    load_state_dict step. If save_path is None or the file doesn't
-    exist, the model keeps its final-epoch weights — which is a degraded
-    case but at least the behaviour is now explicit.
-    """
+  
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=lr, weight_decay=weight_decay
     )
@@ -310,12 +203,6 @@ def train_model(model, train_loader, val_loader, criterion, device,
         print(f"\n  Training complete: best val macro-F1 = {best_val_f1:.4f} "
               f"(epoch {stopped_epoch - patience}, {elapsed:.1f}s)")
 
-    # Fix: restore the in-memory model to its best-val state before
-    # returning. Previously the caller had to remember to reload from
-    # disk; evaluating the returned model directly would use last-epoch
-    # weights instead of best-val weights. This reload is idempotent
-    # with any caller that also reloads from disk later (like
-    # train_transformer_audio.py and train_transformer_attn.py do).
     if save_path and Path(save_path).exists():
         model.load_state_dict(torch.load(save_path, map_location=device))
     elif save_path and verbose:
@@ -328,31 +215,13 @@ def train_model(model, train_loader, val_loader, criterion, device,
         "elapsed_s"    : elapsed,
     }
 
-
-# ---------------------------------------------------------------------------
-# Attention weight analysis
-# ---------------------------------------------------------------------------
-
 def analyse_attention_weights(weights: torch.Tensor,
                                padding_mask: torch.Tensor = None) -> dict:
-    """
-    Compute summary statistics for attention weights to verify the
-    attentive pooling mechanism is non-trivial.
-
-    Parameters
-    ----------
-    weights      : (N, T) attention weights from the model
-    padding_mask : (N, T) bool — True = padded; excluded from stats
-
-    Returns dict with interpretability flags.
-    """
     if padding_mask is not None:
-        # Zero out padded positions before computing stats
         real_mask = (~padding_mask).float()
         weights   = weights * real_mask
 
-    std_per_example = weights.std(dim=1)   # (N,)
-    # Uniform weights would have std = 1/sqrt(12*(T-1)) ≈ very small
+    std_per_example = weights.std(dim=1)  
     uniform_std     = (1.0 / weights.shape[1]) ** 0.5 * 0.1
 
     stats = {
@@ -365,12 +234,7 @@ def analyse_attention_weights(weights: torch.Tensor,
     return stats
 
 
-# ---------------------------------------------------------------------------
-# Results reporting
-# ---------------------------------------------------------------------------
-
 def print_classification_report(preds, labels, split_name: str = ""):
-    """Per-class classification report; handles partially present classes."""
     present_ids   = sorted(set(labels) | set(preds))
     present_names = [LABEL_DECODER.get(i, str(i)) for i in present_ids]
 
@@ -395,7 +259,6 @@ def print_classification_report(preds, labels, split_name: str = ""):
 
 
 def save_results(results: dict, path: Path):
-    """Save a results dict as JSON. Handles numpy types."""
     path.parent.mkdir(parents=True, exist_ok=True)
 
     def _convert(obj):
@@ -410,17 +273,9 @@ def save_results(results: dict, path: Path):
     print(f"Results saved → {path}")
 
 
-# ---------------------------------------------------------------------------
-# Sanity checks
-# ---------------------------------------------------------------------------
-
 def sanity_check_forward(model, f_dim: int, max_len: int, n_classes: int,
                          device: torch.device,
                          use_meta: bool = False, meta_dim: int = 2):
-    """
-    Dummy forward pass to verify output shape, no NaN, and attention
-    weight validity (for attentive pooling model).
-    """
     print("\n--- Forward pass sanity checks ---")
     model.eval()
     B = 4
@@ -449,7 +304,6 @@ def sanity_check_forward(model, f_dim: int, max_len: int, n_classes: int,
              logits.dtype == torch.float32),
         ]
 
-        # Attentive pooling specific checks
         if attn_wts is not None:
             checks += [
                 ("Attn weights shape == (B, T)",
@@ -483,13 +337,9 @@ def sanity_check_forward(model, f_dim: int, max_len: int, n_classes: int,
 
 def sanity_check_dataloader(loader, f_dim: int, max_len: int,
                              use_meta: bool = False):
-    """Verify DataLoader batch shapes, dtypes, and value ranges."""
     print("\n--- DataLoader sanity checks ---")
     batch = next(iter(loader))
 
-    # Always unpack however many items the DataLoader actually yields,
-    # then treat the 4th element as meta regardless of the use_meta flag
-    # (the dataset may always return 4-tuples even when meta is unused).
     if len(batch) == 4:
         x, mask, y, meta = batch
     else:

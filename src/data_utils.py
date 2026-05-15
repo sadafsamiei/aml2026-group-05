@@ -5,9 +5,9 @@ Master table construction, spectrogram audit, split construction,
 and PyTorch Dataset classes for both models.
 
 Supports the full 2026 training dataset:
-  - CSV: contextsvocs_groupproject_2026-04-07_133933.csv
-  - Audio IDs: audio_0000 … audio_1008
-  - PNG paths: training_data/spectrograms/audio_XXXX.png
+  - CSV
+  - Audio IDs
+  - PNG paths
   - 9 children, 3 languages, 4 classes, 1009 clips
 
 Label mapping (new 2026 scheme):
@@ -16,18 +16,6 @@ Label mapping (new 2026 scheme):
   INTER ← CONV, OBSERV_INTER, SEEK_INTER, GROOMED, AGGR
   EXTEV ← FOOD, REST, SLE
 
-Metadata ablation support
--------------------------
-MetadataSpectrogramDataset honours the METADATA_MODE config flag:
-  - "age_gender" : use both age and gender (canonical)
-  - "age_only"   : pass real age, zero out gender
-  - "gender_only": pass real gender, zero out age
-  - "none"       : zero out both (equivalent to use_external_meta=False)
-
-The dataset still returns a (2,)-dim meta tensor in every mode, so
-neither the model nor the training loop needs any changes — only the
-dataset constructs different inputs. This lets us isolate each
-metadata feature's contribution without retraining the architecture.
 """
 
 import collections
@@ -54,16 +42,8 @@ from config import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Label mapping
-# ---------------------------------------------------------------------------
-
 def map_label(lbl: str):
-    """
-    Labels in contextsvocs_groupproject_2026-04-09_104847.csv are already
-    in 4-class format (EXTEV, INTER, MOVE, PLTOY). No mapping needed.
-    Returns None for any label not in CLASS_NAMES (safety check).
-    """
+
     if lbl in PLTOY_LABELS:  return "PLTOY"
     if lbl in MOVE_LABELS:   return "MOVE"
     if lbl in INTER_LABELS:  return "INTER"
@@ -71,16 +51,12 @@ def map_label(lbl: str):
     return None
 
 
-# ---------------------------------------------------------------------------
-# Master table
-# ---------------------------------------------------------------------------
 
 def build_master_table(
     contexts_csv: Path = CONTEXTS_CSV,
     spec_dir: Path = SPEC_DIR,
     verbose: bool = True,
 ) -> pd.DataFrame:
-    """Load the 2026 contexts CSV, apply label mapping, resolve PNG paths."""
     df = pd.read_csv(contexts_csv)
 
     if "Unnamed: 0" in df.columns:
@@ -140,12 +116,7 @@ def build_master_table(
     return df
 
 
-# ---------------------------------------------------------------------------
-# Spectrogram audit
-# ---------------------------------------------------------------------------
-
 def audit_spectrograms(png_paths: list, verbose: bool = True) -> dict:
-    """Scan a small sample of PNGs to determine format, dimensions, and pixel range."""
     import random as _random
 
     n_total = len(png_paths)
@@ -194,12 +165,7 @@ def audit_spectrograms(png_paths: list, verbose: bool = True) -> dict:
     return stats
 
 
-# ---------------------------------------------------------------------------
-# Metadata viability check
-# ---------------------------------------------------------------------------
-
 def check_metadata_viability(df: pd.DataFrame, verbose: bool = True) -> dict:
-    """Determine whether age and gender can safely be used as metadata inputs."""
     n_children       = df["child"].nunique()
     n_unique_ages    = df.groupby("child")["age"].first().nunique()
     n_unique_genders = df.groupby("child")["gender"].first().nunique()
@@ -236,7 +202,6 @@ def check_metadata_viability(df: pd.DataFrame, verbose: bool = True) -> dict:
 
 
 def compute_meta_stats(train_df: pd.DataFrame) -> dict:
-    """Compute age normalisation stats from the training split only."""
     age_mean   = float(train_df["age"].mean())
     age_std    = float(train_df["age"].std()) + 1e-8
     genders    = sorted(train_df["gender"].dropna().unique())
@@ -246,10 +211,6 @@ def compute_meta_stats(train_df: pd.DataFrame) -> dict:
           f"gender_map={gender_map}")
     return {"age_mean": age_mean, "age_std": age_std, "gender_map": gender_map}
 
-
-# ---------------------------------------------------------------------------
-# Split construction
-# ---------------------------------------------------------------------------
 
 def determine_eval_protocol(df: pd.DataFrame) -> str:
     n = df["child"].nunique()
@@ -266,7 +227,6 @@ def determine_eval_protocol(df: pd.DataFrame) -> str:
 def build_splits(df: pd.DataFrame, protocol: str,
                  k_folds: int = 5, val_frac: float = 0.15,
                  test_frac: float = 0.15, save: bool = True) -> list:
-    """Construct train/val/test splits."""
     SPLITS_DIR.mkdir(parents=True, exist_ok=True)
     folds = []
 
@@ -356,7 +316,6 @@ def _verify_splits(folds, protocol):
 
 
 def load_splits(protocol: str, k_folds: int = 5) -> list:
-    """Re-load previously saved splits from SPLITS_DIR."""
     folds = []
     if protocol == "holdout":
         folds.append((
@@ -382,13 +341,8 @@ def load_splits(protocol: str, k_folds: int = 5) -> list:
     return folds
 
 
-# ---------------------------------------------------------------------------
-# PNG loader
-# ---------------------------------------------------------------------------
-
 def load_png(png_path: str, target_height: int = None,
             target_width: int = None) -> np.ndarray:
-    """Load a spectrogram PNG → float32 (F, T) in [0, 1]."""
     with Image.open(png_path) as img:
         img.load()
         if img.mode in ("RGB", "RGBA"):
@@ -401,13 +355,7 @@ def load_png(png_path: str, target_height: int = None,
         return np.array(img, dtype=np.float32) / 255.0
 
 
-# ---------------------------------------------------------------------------
-# PyTorch Datasets
-# ---------------------------------------------------------------------------
-
 class SpectrogramDataset(Dataset):
-    """Audio-only dataset (Model 2)."""
-
     def __init__(self, split_df, label_encoder, max_len, f_dim,
                  train: bool = False):
         self.records       = split_df.reset_index(drop=True)
@@ -484,28 +432,6 @@ class SpectrogramDataset(Dataset):
 
 
 class MetadataSpectrogramDataset(SpectrogramDataset):
-    """
-    Metadata-aware dataset (Model 3).
-
-    Returns: (x, pad_mask, label, meta)
-      meta : (2,) float32 — [age_normalised, gender_binary]
-
-    The contents of the meta tensor depend on the module-level
-    METADATA_MODE flag imported from config.py. The tensor is always
-    (2,)-dim so the model and training loop never change; we just zero
-    out a dimension when that feature is being ablated.
-
-    METADATA_MODE values:
-      "age_gender"  : [age_norm,  gender_val]  — canonical
-      "age_only"    : [age_norm,  0.0       ]  — gender ablated
-      "gender_only" : [0.0,       gender_val]  — age ablated
-      "none"        : [0.0,       0.0       ]  — both ablated
-                     (also happens when use_external_meta=False, which
-                      falls through the same branch below.)
-
-    This lets us run a clean 3-point metadata ablation without editing
-    the model or the training scripts.
-    """
 
     def __init__(self, split_df, label_encoder, max_len, f_dim,
                  meta_stats: dict = None, use_external_meta: bool = False,
@@ -513,12 +439,8 @@ class MetadataSpectrogramDataset(SpectrogramDataset):
         super().__init__(split_df, label_encoder, max_len, f_dim, train=train)
         self.use_external_meta = use_external_meta
         self.meta_stats        = meta_stats or {}
-        # Snapshot the mode at construction time so a later config edit
-        # cannot silently change what a live dataset returns.
         self.metadata_mode     = METADATA_MODE
 
-        # Validate the flag early — typos here would otherwise silently
-        # fall through to the "none" branch.
         if self.metadata_mode not in ("age_gender", "age_only",
                                        "gender_only", "none"):
             raise ValueError(
@@ -539,14 +461,12 @@ class MetadataSpectrogramDataset(SpectrogramDataset):
             age_norm   = (float(row["age"]) - age_mean) / age_std
             gender_val = gender_map.get(str(row.get("gender", "U")), 0.5)
 
-            # Zero out the ablated field based on mode. This branch runs
-            # ONLY when use_external_meta is True AND mode is not "none",
-            # so we know at least one field is live.
+
             if self.metadata_mode == "age_only":
                 meta = torch.FloatTensor([age_norm, 0.0])
             elif self.metadata_mode == "gender_only":
                 meta = torch.FloatTensor([0.0, gender_val])
-            else:  # "age_gender" (canonical)
+            else:  
                 meta = torch.FloatTensor([age_norm, gender_val])
         else:
             meta = torch.zeros(2, dtype=torch.float32)
