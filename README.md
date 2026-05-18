@@ -32,7 +32,7 @@ dashboard/
 └── methodology_tab.py         # Methodology tab content: pipeline overview + architecture diagrams
 
 experiments/
-├── eda/
+├── EDA/
 │   └── EDA.ipynb                           # Frequency-domain EDA + band-pass denoising of raw audio.
 │                                           #   Computes per-file FFT and aggregate Welch's PSD across the
 │                                           #   1,009 clips, then applies a Butterworth band-pass filter
