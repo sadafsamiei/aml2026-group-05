@@ -32,6 +32,13 @@ dashboard/
 └── methodology_tab.py         # Methodology tab content: pipeline overview + architecture diagrams
 
 experiments/
+├── eda/
+│   └── EDA.ipynb                           # Frequency-domain EDA + band-pass denoising of raw audio.
+│                                           #   Computes per-file FFT and aggregate Welch's PSD across the
+│                                           #   1,009 clips, then applies a Butterworth band-pass filter
+│                                           #   (HP=85 Hz, LP=6 kHz, order=5, zero-phase via sosfiltfilt).
+│                                           #   Reads anonymized_audios/, writes denoised_audios/.
+│                                           #   Must run once before any feature extraction.
 ├── pretrained_embeddings/
 │   ├── extract_wav2vec2_embeddings.ipynb   # One-off notebook: extracts frozen wav2vec2-base embeddings, caches to disk
 │   └── finetune_wav2vec2.py                # Controlled experiment: frozen vs top-2 / top-4 layer fine-tuning of
@@ -78,7 +85,7 @@ results/
 PROBLEMSETTING.md              # Problem setting adapted from the course brief to reflect the actual project methodology
 README.md                      # This file
 requirements.txt               # Python dependencies (torch, librosa, scikit-learn, optuna, streamlit, etc.)
-project_report.pdf             # Final  report
+project_report.pdf             # Final report
 ```
 
 ---
@@ -97,7 +104,8 @@ Expected data/results layout:
 
 ```text
 DATA_DIR/
-├── denoised_audios/
+├── anonymized_audios/         # Raw input — source for the EDA notebook
+├── denoised_audios/           # Produced by experiments/eda/EDA.ipynb; consumed by every feature extractor
 ├── contextsvocs_groupproject_2026-04-09_104847.csv
 └── MFCC / metadata files
 
@@ -114,19 +122,31 @@ RES_DIR/
 
 ## Generate Features
 
-Generate mel spectrograms:
+The pipeline is: **denoise raw audio** → **extract three feature sources** → train.
+
+### Step 0 — Denoise raw audio (run once)
+
+```bash
+jupyter notebook experiments/eda/EDA.ipynb
+```
+
+Produces `denoised_audios/`, which every subsequent feature extractor reads.
+Applies a Butterworth band-pass filter (85 Hz - 6 kHz) chosen from the
+aggregate frequency profile of the dataset.
+
+### Step 1 — Generate mel spectrograms
 
 ```bash
 python utils/generate_spectrograms.py
 ```
 
-Generate MFCC features:
+### Step 2 — Generate MFCC features
 
 ```bash
 python scripts/audio_to_mfccs.py
 ```
 
-Generate wav2vec2 embeddings:
+### Step 3 — Generate wav2vec2 embeddings
 
 ```bash
 jupyter notebook experiments/pretrained_embeddings/extract_wav2vec2_embeddings.ipynb
