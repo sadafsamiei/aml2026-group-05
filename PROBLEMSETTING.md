@@ -68,9 +68,9 @@ ACQDIV corpus, each annotated with one of the four context labels above.
 Clips come from **9 children** spanning three typologically distinct
 languages: Shipibo-Conibo (South America), Tagalog (Philippines), and
 Vietnamese (Southeast Asia). Recording durations range from under 1 s to
-8 s (mean 1.33 s ± 0.71 s). All recordings are loaded at 16 kHz and
-denoised with a spectral noise-reduction procedure before feature
-extraction.
+8 s (mean 1.33 s ± 0.71 s). 
+
+All recordings are loaded at 16 kHz and denoised with a Butterworth band-pass filter (85 Hz – 6 kHz) before feature extraction
 
 ### Feature sources
 
@@ -226,7 +226,7 @@ For the **Transformer models**, an 8-configuration grid per (model,
 feature) combination tunes:
 
 - $d_\text{model} \in \{32, 64\}$
-- $L \in 1, 2\$ (number of encoder layers)
+- $L \in \{1, 2\}$ (number of encoder layers)
 - dropout $\in \{0.3, 0.5\}$
 - learning rate: fixed at $10^{-3}$ for mel/MFCC and $5 \times 10^{-4}$
   for wav2vec2
