@@ -1,15 +1,15 @@
 """
 dashboard/app.py
 ----------------
-Streamlit dashboard for aml2026-group-05
+Streamlit dashboard for aml2026-group-05 — modern dark theme.
 
+Three tabs:
 Three tabs:
   1. Methodology          - project methodologies and explanation of the pipeline
   2. Headline Result      — interactive complexity vs F1 scatter
   3. Per-class Explorer   — model x feature breakdown with live confusion matrix
   4. Clip Explorer        — filter clips by agreement category, play audio inline
   5. Presentation clips   - some interesting clips to back our assumptions and results
-
 
 Usage
 -----
@@ -28,7 +28,7 @@ import plotly.graph_objects as go
 import plotly.io as pio
 
 HERE = Path(__file__).resolve().parent          
-sys.path.insert(0, str(HERE.parent / "src"))     
+sys.path.insert(0, str(HERE.parent / "src"))    
 
 import config as cfg
 from methodology_tab import render_methodology_tab
@@ -38,39 +38,31 @@ RESULTS_DIR = cfg.RES_DIR / "results"
 WAV_DIR     = cfg.WAV_DIR
 SPEC_DIR    = cfg.SPEC_DIR
 
-# ---------------------------------------------------------------------------
-# Theme constants
-# ---------------------------------------------------------------------------
-
-BG          = "#0A0E1A"             
-SURFACE     = "#131825"              
-SURFACE_2   = "#1A2030"             
+BG          = "#0A0E1A"              
+SURFACE     = "#131825"             
+SURFACE_2   = "#1A2030"              
 BORDER      = "rgba(255,255,255,0.06)"
 BORDER_HI   = "rgba(255,255,255,0.10)"
 
 TEXT        = "#E5E7EB"             
-TEXT_MUTED  = "#9CA3AF"              
+TEXT_MUTED  = "#9CA3AF"            
 TEXT_DIM    = "#6B7280"              
 
 ACCENT      = "#F59E0B"             
-ACCENT_2    = "#22D3EE"              
+ACCENT_2    = "#22D3EE"             
 GRID        = "rgba(255,255,255,0.06)"
 
 COLOR_M1    = "#60A5FA"              
-COLOR_M2    = "#F59E0B"              
-COLOR_M3    = "#34D399"              
+COLOR_M2    = "#F59E0B"             
+COLOR_M3    = "#34D399"             
 
 DARK_HEATMAP = [
     [0.00, "rgba(26, 32, 48, 1)"],      
     [0.20, "rgba(96, 165, 250, 0.25)"],
     [0.45, "rgba(96, 165, 250, 0.55)"],
     [0.70, "rgba(34, 211, 238, 0.85)"],
-    [1.00, "rgba(34, 211, 238, 1)"],     
+    [1.00, "rgba(34, 211, 238, 1)"],    
 ]
-
-# ---------------------------------------------------------------------------
-# Page setup
-# ---------------------------------------------------------------------------
 
 st.set_page_config(
     page_title="Child Vocalisation Context Classification — Dashboard",
@@ -79,6 +71,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# Default plotly template — every figure picks this up automatically
 pio.templates["aml_dark"] = go.layout.Template(
     layout=go.Layout(
         paper_bgcolor="rgba(0,0,0,0)",
@@ -101,9 +94,6 @@ pio.templates["aml_dark"] = go.layout.Template(
 )
 pio.templates.default = "aml_dark"
 
-# ---------------------------------------------------------------------------
-# Global CSS — dark theme, modern typography, refined components
-# ---------------------------------------------------------------------------
 
 st.markdown(f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -426,9 +416,6 @@ hr {{
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------------------------
-# Header
-# ---------------------------------------------------------------------------
 
 st.markdown(
     '<p class="main-title">Child Vocalisation Context Classification</p>',
@@ -442,9 +429,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------------------------------------------------------------------------
-# Canonical results — hardcoded from README to keep the dashboard portable
-# ---------------------------------------------------------------------------
 
 RESULTS = pd.DataFrame([
     {"model": "Model 1 (LR)",        "feature": "MFCC",     "params":   164,
@@ -518,14 +502,8 @@ MODEL_COLORS = {
     "Model 3 (attention)": COLOR_M3,
 }
 
-# ---------------------------------------------------------------------------
-# Loaders
-# ---------------------------------------------------------------------------
-
 @st.cache_data(show_spinner=False)
 def _load_clips_cached(path_str: str, mtime: float) -> pd.DataFrame:
-    """Inner cached loader — cache key is (path, mtime) so it auto-busts
-    whenever the file on disk changes or a newer file appears."""
     with open(path_str) as f:
         data = json.load(f)
 
@@ -559,19 +537,13 @@ def _load_clips_cached(path_str: str, mtime: float) -> pd.DataFrame:
 
 
 def load_clips() -> tuple[pd.DataFrame, list[Path]]:
-    """Find the latest error_analysis JSON and load it.
-
-    Searches several plausible directories so the dashboard works even if
-    config.RES_DIR resolves to something unexpected on a particular machine.
-    Returns (clips_df, list_of_paths_searched) so the UI can show debug info
-    when nothing is found.
-    """
     search_dirs = [
-        RESULTS_DIR,                                  
-        Path("/home/renku/work/data/results"),       
+        RESULTS_DIR,                                
+        Path("/home/renku/work/data/results"),      
         cfg.RES_DIR / "results",                       
         HERE.parent / "data" / "results",             
     ]
+    # Deduplicate while preserving order
     seen = set()
     search_dirs = [d for d in search_dirs
                     if not (str(d) in seen or seen.add(str(d)))]
@@ -587,12 +559,7 @@ def load_clips() -> tuple[pd.DataFrame, list[Path]]:
                     search_dirs)
     return (pd.DataFrame(), search_dirs)
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _plot_cm(cm: np.ndarray, title: str):
-    """Confusion matrix with dark-friendly colorscale."""
     fig = go.Figure(data=go.Heatmap(
         z=cm, x=CLASS_NAMES, y=CLASS_NAMES,
         text=[[f"{v:.2f}" for v in row] for row in cm],
@@ -804,6 +771,7 @@ with tab3:
         fig.update_layout(**layout)
         st.plotly_chart(fig, width="stretch")
 
+    # Confusion matrices (only for wav2vec2)
     if feat == "wav2vec2" and model_sel in (
             "Model 2 (mean pool)", "Model 3 (attention)", "All three (compare)"):
         st.markdown("---")
@@ -820,6 +788,7 @@ with tab3:
         elif model_sel == "Model 3 (attention)":
             _plot_cm(CM_M3_W2V, "Model 3 — attention")
 
+    # INTER bias readout
     st.markdown("---")
     st.markdown("#### INTER prediction bias")
 
@@ -997,6 +966,7 @@ def _render_clip_explorer():
     )
     info_cols[4].metric("Child / Lang", f"{clip['child']} / {clip['lang']}")
 
+    # Audio
     wav_path = WAV_DIR / f"{audio_id}.wav"
     if wav_path.exists():
         st.markdown("**🔊 Audio**")
@@ -1005,6 +975,7 @@ def _render_clip_explorer():
     else:
         st.warning(f"WAV not found: {wav_path}")
 
+    # Spectrogram
     spec_path = SPEC_DIR / f"{audio_id}.png"
     if spec_path.exists():
         st.markdown("**🎼 Mel spectrogram**")
@@ -1266,10 +1237,6 @@ with tab5:
         f'</div></div>',
         unsafe_allow_html=True,
     )
-
-# ---------------------------------------------------------------------------
-# Footer
-# ---------------------------------------------------------------------------
 
 st.markdown(
     '<div class="footer-caption">'
