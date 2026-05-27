@@ -1,7 +1,7 @@
 """
 dashboard/app.py
 ----------------
-Streamlit dashboard for aml2026-group-05 — modern dark theme.
+Streamlit dashboard for aml2026-group-05 
 
 Three tabs:
 Three tabs:
