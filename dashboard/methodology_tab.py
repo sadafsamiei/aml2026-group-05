@@ -1,7 +1,6 @@
 """
 dashboard/methodology_tab.py
 ----------------------------
-Methodology tab for the aml2026-group-05 dashboard.
 
 Five stages:
   1. Raw data & preprocessing
@@ -10,7 +9,6 @@ Five stages:
   4. Multi-seed canonical training 
   5. Ablations & diagnostics    
 
-Data sources are auto-detected from RES_DIR/results/. 
 """
 
 import json
@@ -21,10 +19,6 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 
-
-# ===========================================================================
-# Loaders 
-# ===========================================================================
 
 def _candidate_result_dirs(directory: Path):
     candidates = []
