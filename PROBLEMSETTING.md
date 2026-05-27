@@ -70,7 +70,7 @@ languages: Shipibo-Conibo (South America), Tagalog (Philippines), and
 Vietnamese (Southeast Asia). Recording durations range from under 1 s to
 8 s (mean 1.33 s ± 0.71 s). 
 
-All recordings are loaded at 16 kHz and denoised with a Butterworth band-pass filter (85 Hz – 6 kHz) before feature extraction
+All recordings are loaded at 16 kHz and denoised with a Butterworth band-pass filter (85 Hz – 6 kHz) before feature extraction.
 
 ### Feature sources
 
