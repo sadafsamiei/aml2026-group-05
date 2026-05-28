@@ -86,6 +86,8 @@ PROBLEMSETTING.md              # Problem setting adapted from the course brief t
 README.md                      # This file
 requirements.txt               # Python dependencies (torch, librosa, scikit-learn, optuna, streamlit, etc.)
 project_report.pdf             # Final report
+presetation_slides.key         # slides for the presentation in .key format
+presentation_slides.pdf        # slides for the presentation in .pdf format
 ```
 
 ---
