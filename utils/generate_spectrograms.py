@@ -5,8 +5,6 @@ Generate clean grayscale mel spectrogram PNGs for model training.
 
 Usage:
     python utils/generate_spectrograms.py
-    python utils/generate_spectrograms.py --limit 10
-    python utils/generate_spectrograms.py --skip_existing
 """
 
 import argparse
