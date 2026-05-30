@@ -4,15 +4,6 @@ utils/extract_interesting_clips.py
 Extracts and categorises every test clip based on whether all three
 models agree or disagree, and whether that agreement is correct.
 
-Within each category the clips are sorted by true class then by
-confusion pair (true_label → consensus_pred or majority_pred) so you
-can immediately see which confusions are systematic.
-
-Usage
------
-    python utils/extract_interesting_clips.py
-    python utils/extract_interesting_clips.py --json /path/to/error_analysis.json
-    python utils/extract_interesting_clips.py --n_per_class 5
 """
 
 import argparse
@@ -31,9 +22,6 @@ import config as cfg
 from config import CLASS_NAMES, RESULTS_DIR, WAV_DIR
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def latest_json(pattern: str) -> Path:
     matches = sorted(RESULTS_DIR.glob(pattern),
@@ -45,7 +33,6 @@ def latest_json(pattern: str) -> Path:
 
 
 def majority_pred(row) -> str:
-    """Return the prediction agreed upon by ≥2 models, or 'no_majority'."""
     preds = [row["m1_pred"], row["m2_pred"], row["m3_pred"]]
     for p in set(preds):
         if preds.count(p) >= 2:
@@ -72,7 +59,6 @@ def categorise(row) -> str:
 
 def print_clips(df: pd.DataFrame, n_per_class: int,
                 show_preds: bool = True):
-    """Print up to n_per_class clips per true label."""
     for cls in CLASS_NAMES:
         sub = df[df["true_label"] == cls]
         if len(sub) == 0:
@@ -98,10 +84,6 @@ def print_clips(df: pd.DataFrame, n_per_class: int,
                       f"M3→{row['m3_pred']}")
             print(f"      {row['wav_path']}")
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def parse_args():
     p = argparse.ArgumentParser(
@@ -131,7 +113,6 @@ def main():
 
     n = len(clips)
 
-    # ── Category definitions ─────────────────────────────────────────
     cats = [
         ("all_agree_correct",            "ALL AGREE — CORRECT",
          "All 3 models predict the right class"),
@@ -147,7 +128,6 @@ def main():
          "Mixed results (1 or 2 models wrong, various combinations)"),
     ]
 
-    # ── Print each category ───────────────────────────────────────────
     for cat_key, cat_title, cat_desc in cats:
         sub = clips[clips["category"] == cat_key].copy()
         pct = len(sub) / n * 100
@@ -163,7 +143,6 @@ def main():
         show = cat_key != "all_agree_correct"  # correct clips need no pred
         print_clips(sub, args.n_per_class, show_preds=show)
 
-    # ── Confusion pair summary ────────────────────────────────────────
     print(f"\n{'='*65}")
     print("CONFUSION PAIRS — ALL-AGREE-WRONG clips")
     print("(true class → agreed wrong prediction, sorted by frequency)")
@@ -180,7 +159,6 @@ def main():
     else:
         print("  (no all-agree-wrong clips)")
 
-    # ── Global summary ────────────────────────────────────────────────
     print(f"\n{'='*65}")
     print("SUMMARY")
     print("=" * 65)
@@ -207,7 +185,6 @@ def main():
     print(f"    Transformers-win INTER: audio_0266.wav  "
           f"(M1=MOVE wrong, M2/M3=INTER correct)")
 
-    # ── Save CSV ──────────────────────────────────────────────────────
     ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_cols = ["audio_id", "wav_path", "true_label", "majority_pred",
                 "m1_pred", "m2_pred", "m3_pred",
@@ -218,7 +195,6 @@ def main():
     ).to_csv(csv_path, index=False)
     print(f"\nFull table → {csv_path}")
 
-    # ── Save text summary ─────────────────────────────────────────────
     txt_path = RESULTS_DIR / f"clip_agreement_{ts}_summary.txt"
     lines = [f"Clip agreement analysis — {json_path.name}\n",
              f"Total test clips: {n}\n\n"]
