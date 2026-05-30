@@ -1,19 +1,11 @@
 """
 models.py
 ---------
-Two model classes used in this project:
-
   AudioTransformer              — Model 2 (neural baseline, mean pooling)
   AttentivePoolingTransformer   — Model 3 (main model, query-based pooling)
 
-Both share the identical Transformer encoder backbone. The only difference
-is in how the frame-level encoder outputs are pooled into a single vector
-before the classification head.
-
-Extension (v2): separate dropout rates at four independent locations
+Separate dropout rates at four independent locations
 --------------------------------------------------------------------
-Previously a single `dropout` rate was shared between the encoder layers
-and the head. Following reviewer feedback, v2 introduces per-location rates:
 
   dropout_encoder   — inside TransformerEncoderLayer (attention + FFN)
                       same semantic as the original `dropout` parameter
