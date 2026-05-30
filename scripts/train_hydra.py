@@ -6,13 +6,10 @@ Loads config from YAML files
 
 Usage
 -----
-    # Train Model 2 with mel features (canonical config):
     python scripts/train_hydra.py --config-name audio_mel
 
-    # Train Model 3 with wav2vec2 (canonical config):
     python scripts/train_hydra.py --config-name attn_wav2vec2
 
-    # Override any value from CLI:
     python scripts/train_hydra.py --config-name attn_mel \\
         model.dropout_encoder=0.4 \\
         model.dropout_head=0.2 \\
@@ -20,12 +17,8 @@ Usage
         model.dropout_meta=0.15 \\
         training.lr=5e-4
 
-    # Run 5 seeds for multi-seed reporting:
-    python scripts/train_hydra.py --config-name audio_mel training.seed=42
-    python scripts/train_hydra.py --config-name audio_mel training.seed=123
-    python scripts/train_hydra.py --config-name audio_mel training.seed=456
-    python scripts/train_hydra.py --config-name audio_mel training.seed=789
-    python scripts/train_hydra.py --config-name audio_mel training.seed=2024
+    python scripts/train_hydra.py --config-name audio_mel training.seed=42 / 123 / 456 / 789 / 2024
+
 
 """
 
