@@ -4,17 +4,15 @@ audio_to_mfccs.py
 Extract transformer-compatible MFCC features from denoised audio files.
 
 Produces (128, 230) arrays per clip to match the existing mel spectrogram
-pipeline (F_DIM=128, MAX_LEN=230) so no config changes are needed:
+pipeline (F_DIM=128, MAX_LEN=230) 
   - 40 MFCCs + 40 deltas + 40 delta-deltas  →  120 frequency bins
   - Zero-padded from 120 → 128 on the frequency axis
   - Padded / truncated to 230 time frames
 
 Usage
 -----
-    # Default: matches pipeline dimensions exactly (128 × 230)
     python scripts/audio_to_mfccs.py
 
-    # Custom settings
     python scripts/audio_to_mfccs.py --n_mfcc 20 --max_frames 300
 """
 
