@@ -13,10 +13,6 @@ From the project root:
 
     python utils/regenerate_optuna_figures_complete.py
 
-or from the directory containing the JSON files:
-
-    python regenerate_optuna_figures_complete.py --data-dir .
-
 """
 
 from __future__ import annotations
