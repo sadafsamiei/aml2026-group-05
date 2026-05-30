@@ -2,7 +2,7 @@
 scripts/train_hydra.py
 ----------------------
 Hydra-enabled training wrapper for Models 2 and 3.
-Loads config from YAML files; all values overridable from the command line.
+Loads config from YAML files
 
 Usage
 -----
@@ -26,16 +26,6 @@ Usage
     python scripts/train_hydra.py --config-name audio_mel training.seed=456
     python scripts/train_hydra.py --config-name audio_mel training.seed=789
     python scripts/train_hydra.py --config-name audio_mel training.seed=2024
-
-Config layout
--------------
-    configs/
-      model/
-        audio_mel.yaml       ← Model 2, mel
-        attn_mel.yaml        ← Model 3, mel
-        attn_wav2vec2.yaml   ← Model 3, wav2vec2
-      training/
-        default.yaml         ← shared training settings
 
 """
 
