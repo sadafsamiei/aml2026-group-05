@@ -10,7 +10,7 @@ Supports the full 2026 training dataset:
   - PNG paths
   - 9 children, 3 languages, 4 classes, 1009 clips
 
-Label mapping (new 2026 scheme):
+Label mapping:
   PLTOY ← PLAY1, PLAY+, TOYMO
   MOVE  ← WALK, CARRIED, ARRIVES, LEAVES, FALLS
   INTER ← CONV, OBSERV_INTER, SEEK_INTER, GROOMED, AGGR
