@@ -4,21 +4,6 @@ experiments/chance_baseline.py
 Formal chance-level baselines using sklearn's DummyClassifier on the
 project's canonical holdout split.
 
-Why this experiment
--------------------
-We report 0.250 as "chance level" throughout the project (correct for a
-balanced 4-class problem under a uniform random classifier). This script
-makes that claim rigorous by actually running three DummyClassifier
-strategies on the same train/test split used by all three models:
-
-  most_frequent  — always predicts the majority class (PLTOY in test)
-  stratified     — samples predictions proportionally to class frequency
-                   in the training set
-  uniform        — samples uniformly at random across all 4 classes
-
-For stratified and uniform we report mean ± std across 1000 random
-seeds to estimate variance.
-
 """
 
 import json
