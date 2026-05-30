@@ -725,9 +725,6 @@ def render_methodology_tab(
         unsafe_allow_html=True,
     )
 
-    # =======================================================================
-    #  Raw data & preprocessing
-    # =======================================================================
     stage_header(
         1, "Raw data & preprocessing",
         "1,009 clips of child vocalisations from 9 children across 3 languages. "
@@ -791,9 +788,6 @@ def render_methodology_tab(
             ACCENT_2, SURFACE, BORDER, TEXT, TEXT_MUTED,
         )
 
-    # =======================================================================
-    #  Feature extraction & preprocessing
-    # =======================================================================
     stage_header(
         2, "Feature extraction & preprocessing",
         "Each WAV is converted into three different representations, then "
@@ -1113,9 +1107,6 @@ def render_methodology_tab(
                     unsafe_allow_html=True,
                 )
 
-    # =======================================================================
-    #  Hyperparameter tuning
-    # =======================================================================
     stage_header(
         3, "Hyperparameter tuning — Optuna across all 9 cells",
         "Optuna is now reported across every model–feature combination. It produces three genuine gains and reveals that validation F1 is often an unreliable selector under the language-mismatched split.",
@@ -1162,9 +1153,6 @@ def render_methodology_tab(
     st.dataframe(table[["Model", "Feature", "Trials", "Selection", "Canonical", "Optuna", "Delta", "Best params", "Verdict"]], width="stretch", hide_index=True)
     st.markdown(f'<div style="color:{TEXT_DIM}; font-size:12px; line-height:1.65; margin-top:10px;">Important: Optuna selection never uses the test set. LR is selected by inner LOPO-CV; transformers are selected by validation macro-F1 and then interpreted on the fixed Tagalog test child. The negative/within-noise outcomes are evidence that validation F1 is often a noisy selector under this cross-linguistic split.</div>', unsafe_allow_html=True)
 
-    # =======================================================================
-    #  Multi-seed canonical training
-    # =======================================================================
 
     stage_header(
         4, "Multi-seed canonical training",
@@ -1308,10 +1296,6 @@ def render_methodology_tab(
                     f'</div>',
                     unsafe_allow_html=True,
                 )
-
-    # =======================================================================
-    #  Ablations & diagnostics
-    # =======================================================================
 
     stage_header(
         5, "Ablations & diagnostics",
