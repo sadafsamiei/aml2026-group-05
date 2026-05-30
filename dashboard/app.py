@@ -71,7 +71,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Default plotly template — every figure picks this up automatically
 pio.templates["aml_dark"] = go.layout.Template(
     layout=go.Layout(
         paper_bgcolor="rgba(0,0,0,0)",
@@ -588,10 +587,6 @@ def _plot_cm(cm: np.ndarray, title: str):
     st.plotly_chart(fig, width="stretch")
 
 
-# ---------------------------------------------------------------------------
-# Tabs
-# ---------------------------------------------------------------------------
-
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔬  Methodology",
     "🎯  Headline Result",
@@ -599,10 +594,6 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🎧  Clip Explorer",
     "🌟  Presentation Picks",
 ])
-
-# ===========================================================================
-# TAB 1 — Methodology
-# ===========================================================================
 
 with tab1:
     render_methodology_tab(
@@ -623,10 +614,6 @@ with tab1:
         COLOR_M3=COLOR_M3,
         DARK_HEATMAP=DARK_HEATMAP,
     )
-
-# ===========================================================================
-# TAB 2 — Headline Result
-# ===========================================================================
 
 with tab2:
     st.markdown("### Model complexity vs test F1")
@@ -692,9 +679,6 @@ with tab2:
         df_table["delta"] = df_table["delta"].apply(lambda x: f"{x:+.3f}")
         st.dataframe(df_table[["variant", "model", "feature", "params", "val_f1", "test_f1", "delta", "verdict", "config"]], hide_index=True, width="stretch")
 
-# ===========================================================================
-# TAB 3 — Per-class Explorer
-# ===========================================================================
 
 with tab3:
     st.markdown("### Per-class breakdown across models and features")
@@ -811,11 +795,6 @@ with tab3:
         "Tagalog training prior is 46.9% INTER. Model 3 absorbs this prior; "
         "Model 2's mean pool dilutes it via averaging."
     )
-
-
-# ===========================================================================
-# TAB 4 — Clip Explorer
-# ===========================================================================
 
 def _render_clip_explorer():
     """Tab 3 body. Uses early `return` instead of `st.stop()` so that tabs 4
@@ -986,10 +965,6 @@ def _render_clip_explorer():
 
 with tab4:
     _render_clip_explorer()
-
-# ===========================================================================
-# TAB 5 — Presentation Picks
-# ===========================================================================
 
 with tab5:
     st.markdown("### Curated clips for the presentation")
