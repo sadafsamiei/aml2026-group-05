@@ -9,14 +9,6 @@ What this script does:
         (b) Fine-tune top 2 layers 
         (c) Fine-tune top 4 layers
 
-    For each condition:
-        - Training F1   
-        - Validation F1 
-        - Test F1       
-        - Val-test gap 
-        - Seed std      
-
-
 Usage:
     python experiments/pretrained_embeddings/finetune_wav2vec2.py
 
