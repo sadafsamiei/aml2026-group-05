@@ -3,8 +3,6 @@ train_lr_baseline.py
 --------------------
 Model 1 — Logistic regression baseline.
 
-Supports THREE feature sources for direct comparison with Models 2 and 3:
-
   --features mfcc      → 20 librosa MFCC + (optional) deltas, mean+std
                          per coefficient. Computed live from WAV files.
                          Canonical 40-dim (no delta) or 80-dim (with delta).
@@ -26,16 +24,9 @@ is the input vector.
 
 Usage
 -----
-    # Canonical: MFCC summary stats, no delta (40 features)
     python scripts/train_lr_baseline.py --features mfcc
-
-    # MFCC + delta ablation (80 features)
     python scripts/train_lr_baseline.py --features mfcc --use_delta
-
-    # Mel summary stats (256 features)
     python scripts/train_lr_baseline.py --features mel
-
-    # wav2vec2 summary stats (1536 features)
     python scripts/train_lr_baseline.py --features wav2vec2
 """
 
