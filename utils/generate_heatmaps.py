@@ -1,12 +1,11 @@
 """
 generate_spectrograms.py
 ------------------------
-Generate viridis mel spectrogram PNGs.
+Generate viridis mel spectrogram PNGs. 
+( mostly used to visually analyse the audio files and not used in our models ) 
 
 Usage:
     python utils/generate_heatmaps.py
-    python utils/generate_heatmaps.py --limit 10
-    python utils/generate_heatmaps.py --skip_existing
 """
 
 import argparse
@@ -21,7 +20,6 @@ import config as cfg
 
 
 def wav_to_png(wav_path: Path, out_path: Path) -> None:
-    """Convert one WAV file to a viridis spectrogram PNG."""
     import librosa
     import librosa.display
     import matplotlib
@@ -75,7 +73,6 @@ def main():
 
     cfg.print_config()
 
-    # ── Dependency check ─────────────────────────────────────────────────
     missing = []
     for pkg in ["librosa", "matplotlib", "PIL"]:
         try:
@@ -88,7 +85,6 @@ def main():
         sys.exit(1)
     print("Dependencies: librosa ✓  matplotlib ✓  PIL ✓")
 
-    # ── Locate WAV files ─────────────────────────────────────────────────
     if not cfg.WAV_DIR.exists():
         print(f"\n✗ WAV dir not found: {cfg.WAV_DIR}")
         sys.exit(1)
@@ -104,12 +100,10 @@ def main():
     if args.limit:
         wav_files = wav_files[:args.limit]
 
-    # ── Create output dir ────────────────────────────────────────────────
     cfg.SPEC_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Output dir : {cfg.SPEC_DIR}  (exists={cfg.SPEC_DIR.exists()})")
     print(f"Generating {len(wav_files)} spectrograms ...\n")
 
-    # ── Test first file immediately ──────────────────────────────────────
     test_wav = wav_files[0]
     test_out = cfg.SPEC_DIR / (test_wav.stem + ".png")
     print(f"[TEST] First file: {test_wav.name} → {test_out.name}", flush=True)
@@ -121,9 +115,8 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    # ── Process remaining files ──────────────────────────────────────────
     from tqdm import tqdm
-    generated = 1   # first file already done
+    generated = 1   
     skipped   = 0
     failed    = 0
 
