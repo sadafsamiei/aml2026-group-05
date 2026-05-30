@@ -9,8 +9,6 @@ Regenerates the Optuna extension figures
 
 Usage
 -----
-From the project root:
-
     python utils/regenerate_optuna_figures_complete.py
 
 """
