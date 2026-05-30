@@ -12,7 +12,6 @@ Generates figures from canonical + extension results.
 Usage
 -----
     python utils/make_presentation_figures.py
-    python utils/make_presentation_figures.py --out_dir /path/to/dir
 """
 
 import argparse
