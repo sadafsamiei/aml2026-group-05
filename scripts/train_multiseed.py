@@ -3,15 +3,6 @@ train_multiseed.py
 ------------------
 Multi-seed wrapper around the existing single-run trainers for Models 2 and 3.
 
-v2 dropout support
-------------------
-Optuna (v2) searches over four independent dropout locations:
-  --dropout_encoder  inside transformer encoder layers
-  --dropout_input    after input projection (NEW v2)
-  --dropout_head     after pooling, before classifier (NEW v2)
-  --dropout_meta     on metadata query (Model 3 only, NEW v2)
-
-
 Usage (v1 / legacy)
 -------------------
     python scripts/train_multiseed.py --model attn  --seeds 42 123 456 \
