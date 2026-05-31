@@ -7,20 +7,8 @@ Model 1 — Logistic regression baseline.
                          per coefficient. Computed live from WAV files.
                          Canonical 40-dim (no delta) or 80-dim (with delta).
 
-  --features mel       → mean and std along the time axis of the project's
-                         mel spectrogram PNGs (128 mel bins → 256-dim
-                         summary vector). Same source files as Model 2/3
-                         on mel.
-
-  --features wav2vec2  → mean and std along the time axis of the project's
-                         pre-extracted wav2vec2 .npy files (768 dims → 1536-
-                         dim summary vector). Same source files as Model
-                         2/3 on wav2vec2.
-
-The pipeline is identical across feature sources: StandardScaler →
-LogisticRegression(class_weight='balanced'). The only thing that changes
-is the input vector.
-
+  --features mel       
+  --features wav2vec2 
 
 Usage
 -----
