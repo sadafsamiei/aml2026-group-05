@@ -47,7 +47,6 @@ experiments/
 │                                           #   overfitting. Supports the decision to use frozen feature extraction.
 ├── chance_baseline.py         # Computes uniform-random and stratified chance macro-F1 (4-class, 0.245 +/- 0.027)
 ├── class_by_language.py       # Computes class distributions per language (used for the INTER-by-language figure)
-├── cm_comparison.py           # Generates side-by-side row-normalised confusion matrices (Models 2 vs 3, wav2vec2)
 ├── ensemble_seeds.py          # Ablation: averages logits across 5 seeds for M2 mel (result: -0.024 vs single-seed mean)
 ├── error_analysis.py          # Computes the per-clip agreement table (which clips each model gets right/wrong) — drives the 110/40.9% finding
 ├── loco_model1_mel.py         # Leave-One-Child-Out CV for Model 1 (LR mel) across all 9 children — sigma_speaker = 0.053
