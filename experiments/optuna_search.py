@@ -3,10 +3,6 @@ experiments/optuna_search.py
 ----------------------------
 Bayesian hyperparameter optimisation using Optuna for Models 2 and 3.
 
-Replaces the discrete grid search with an N-trial TPE study that searches
-CONTINUOUSLY over lr, dropout_encoder, dropout_head, dropout_input and
-CATEGORICALLY over d_model, num_layers.
-
 Before running:
   mel non-pretrained  → USE_PRETRAINED=False, USE_MFCC=False  in config.py
   wav2vec2 pretrained → USE_PRETRAINED=True,  USE_MFCC=False  in config.py
@@ -55,10 +51,6 @@ except ImportError:
     sys.exit(1)
 
 
-# ---------------------------------------------------------------------------
-# Fixed training settings (same as canonical runs)
-# ---------------------------------------------------------------------------
-
 FIXED = {
     "nhead"          : 4,
     "epochs"         : 100,
@@ -74,16 +66,11 @@ SEARCH_SPACE = {
     "dropout_encoder": (0.1, 0.7),
     "dropout_head"   : (0.0, 0.5),
     "dropout_input"  : (0.0, 0.4),
-    "dropout_meta"   : (0.0, 0.4),   # Model 3 only
+    "dropout_meta"   : (0.0, 0.4),  
 }
 
 
-# ---------------------------------------------------------------------------
-# Build the datasets and loaders ONCE (they don't depend on hyperparameters)
-# ---------------------------------------------------------------------------
-
 def build_loaders(folds, model_kind, f_dim, max_len):
-    """Build train/val/test datasets and loaders once before the search starts."""
     train_df, val_df, test_df = folds[0]
     use_meta = (model_kind == "attn")
 
@@ -117,15 +104,10 @@ def build_loaders(folds, model_kind, f_dim, max_len):
     return train_ds, train_loader, val_loader, test_loader
 
 
-# ---------------------------------------------------------------------------
-# Single trial — train on fold 0 and return val macro-F1
-# ---------------------------------------------------------------------------
-
 def _trial_run(trial, model_kind,
                train_ds, train_loader, val_loader, test_loader,
                f_dim, max_len, device):
 
-    # ── Sample hyperparameters ──────────────────────────────────────────
     d_model         = trial.suggest_categorical(
                           "d_model", SEARCH_SPACE["d_model"])
     num_layers      = trial.suggest_int(
@@ -145,7 +127,6 @@ def _trial_run(trial, model_kind,
 
     use_meta = (model_kind == "attn")
 
-    # ── Build model ─────────────────────────────────────────────────────
     if model_kind == "audio":
         model = AudioTransformer(
             input_dim       = f_dim,
@@ -176,13 +157,11 @@ def _trial_run(trial, model_kind,
             max_len           = max_len + 50,
         ).to(device)
 
-    # ── Loss ────────────────────────────────────────────────────────────
     criterion = torch.nn.CrossEntropyLoss(
         weight=train_ds.class_weights().to(device),
         label_smoothing=FIXED["label_smoothing"],
     )
 
-    # ── Train ───────────────────────────────────────────────────────────
     save_path = MODELS_DIR / f"optuna_trial_{trial.number}.pt"
     train_result = train_model(
         model, train_loader, val_loader, criterion, device,
@@ -212,11 +191,6 @@ def _trial_run(trial, model_kind,
 
     if save_path.exists(): save_path.unlink()
     return val_f1
-
-
-# ---------------------------------------------------------------------------
-# Main search loop
-# ---------------------------------------------------------------------------
 
 def run_optuna_search(model_kind, features, n_trials,
                       folds, f_dim, max_len, device):
@@ -262,7 +236,6 @@ def run_optuna_search(model_kind, features, n_trials,
 
     study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
 
-    # ── Report ──────────────────────────────────────────────────────────
     best = study.best_trial
 
     print(f"\n{'='*60}")
@@ -309,11 +282,6 @@ def run_optuna_search(model_kind, features, n_trials,
     save_results(result, path)
     print(f"\nResults saved → {path}")
     return result
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 def parse_args():
     p = argparse.ArgumentParser(
